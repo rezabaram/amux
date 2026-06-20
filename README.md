@@ -92,7 +92,7 @@ All commands are subcommands of `/amux`:
 | `amux_broadcast` | -- | Broadcast to all agents |
 | `amux_artifacts` | -- | List shared documents |
 | `amux_reserve` | claim, release, list | File/directory reservations |
-| `amux_task` | add, list, assign, pick, done, drop, block | Task backlog |
+| `amux_task` | add, list, assign, pick, done, drop, block | Task backlog with dependencies and batch assign |
 | `amux_journal` | add, list | Record decisions and learnings |
 
 ## Built-in Roles
@@ -140,7 +140,7 @@ Sync runs `git fetch origin` followed by `git rebase origin/<mainBranch>`, where
 - **Heartbeat presence** -- crashed agents auto-expire after 90s, stale reservations cleared automatically
 - **Crash-safe messaging** -- messages survive crashes, delivered on reconnect
 - **File reservations** -- claim files before editing, prevent conflicts
-- **Task backlog** -- assign/pick/done with auto file reservation, same-session assignment, assignee ownership
+- **Task backlog** -- dependencies (dependsOn), batch assign with notification batching, assignee ownership
 - **Shared journal** -- decisions and learnings in every agent's context
 - **Git workspaces** -- isolated worktrees per agent
 - **Built-in roles** -- ready to use, customizable per project

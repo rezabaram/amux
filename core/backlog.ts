@@ -25,6 +25,7 @@ export interface Task {
   status: "todo" | "assigned" | "in-progress" | "done" | "blocked";
   assignee?: string; // agent display name
   assigneeId?: string; // agent UUID
+  dependsOn?: string[]; // task IDs that must be done before this task can be picked
   files?: string[]; // related files (auto-reserve on pick)
   createdBy: string;
   createdAt: string;
@@ -98,6 +99,19 @@ export async function addTask(
 export async function getTask(session: string, id: string): Promise<Task | null> {
   const tasks = await readBacklog(session);
   return tasks.find((t) => t.id === id) ?? null;
+}
+
+/**
+ * Check whether all of a task's dependencies are satisfied (status "done").
+ * Returns the list of unmet dependency IDs, or an empty array if all met.
+ * Tasks without dependencies always return [].
+ */
+export function unmetDependencies(task: Task, allTasks: Task[]): string[] {
+  if (!task.dependsOn?.length) return [];
+  return task.dependsOn.filter((depId) => {
+    const dep = allTasks.find((t) => t.id === depId);
+    return !dep || dep.status !== "done";
+  });
 }
 
 /**

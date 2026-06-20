@@ -73,6 +73,7 @@ import {
   writeBacklog,
   addTask,
   nextTaskId,
+  unmetDependencies,
 } from "../core/backlog";
 import {
   appendEntry as addJournalEntry,
@@ -836,8 +837,9 @@ export default function (pi: ExtensionAPI) {
     label: "Task Backlog",
     description:
       "Manage the task backlog. Actions: add (create task), list (show tasks), " +
-      "assign (delegate to same-session agent), pick (claim/accept task), done (complete), " +
+      "assign (delegate to same-session agent, comma-separated IDs for batch), pick (claim/accept task), done (complete), " +
       "drop (release back to queue), block (mark blocked). " +
+      "Tasks can declare dependencies via dependsOn. " +
       "Picking a task auto-reserves its files. Done/drop auto-releases them.",
     promptSnippet: "Manage task backlog  -- add, list, assign, pick, done, drop, block",
     promptGuidelines: [
@@ -845,6 +847,8 @@ export default function (pi: ExtensionAPI) {
       "Picking a task auto-reserves its files. Done/drop auto-releases them.",
       "Use action 'done' with a summary when completing a task.",
       "Use action 'assign' to delegate tasks to same-session agents  -- the assignee accepts by picking.",
+      "Use dependsOn when adding a task that should wait for other tasks to complete.",
+      "Pass comma-separated IDs to assign to batch-assign multiple tasks with one notification.",
       "Only the assignee can done/drop/block an assigned task.",
     ],
     parameters: Type.Object({
@@ -853,6 +857,7 @@ export default function (pi: ExtensionAPI) {
       title: Type.Optional(Type.String({ description: "Task title (required for add)" })),
       description: Type.Optional(Type.String({ description: "Task description or acceptance criteria" })),
       files: Type.Optional(Type.Array(Type.String({ description: "Related file paths (auto-reserved on pick)" }))),
+      dependsOn: Type.Optional(Type.Array(Type.String({ description: "Task IDs this task depends on (for add)" }))),
       urgent: Type.Optional(Type.Boolean({ description: "If true, prepend to backlog instead of append" })),
       // assign, pick, done, drop, block
       id: Type.Optional(Type.String({ description: "Task ID (e.g. TASK-01)" })),
@@ -879,6 +884,7 @@ export default function (pi: ExtensionAPI) {
               title: params.title,
               description: params.description,
               status: "todo",
+              dependsOn: params.dependsOn,
               files: params.files,
               createdBy: myName,
               createdAt: now,
@@ -889,10 +895,11 @@ export default function (pi: ExtensionAPI) {
 
           const urgentNote = params.urgent ? " (urgent  -- top of backlog)" : "";
           const filesNote = task.files?.length ? `\n  Files: ${task.files.join(", ")}` : "";
+          const depsNote = task.dependsOn?.length ? `\n  Depends on: ${task.dependsOn.join(", ")}` : "";
           return {
             content: [{
               type: "text",
-              text: `Created ${task.id}: ${task.title}${urgentNote}${filesNote}`,
+              text: `Created ${task.id}: ${task.title}${urgentNote}${depsNote}${filesNote}`,
             }],
             details: { task },
           };
@@ -925,6 +932,13 @@ export default function (pi: ExtensionAPI) {
             const isMe = t.assigneeId === myId;
             const meMarker = isMe ? " (you)" : "";
             const filesStr = t.files?.length ? `\n                              Files: ${t.files.join(", ")}` : "";
+            const depsStr = t.dependsOn?.length
+              ? (() => {
+                  const unmet = unmetDependencies(t, tasks);
+                  const label = t.dependsOn.join(", ");
+                  return `\n                              Depends on: ${label}${unmet.length > 0 ? " (waiting)" : " \u2713"}`;
+                })()
+              : "";
             const blockedStr = t.status === "blocked" && t.blockedReason
               ? `\n                              Blocked: ${t.blockedReason}` : "";
             const summaryStr = t.status === "done" && t.summary
@@ -932,7 +946,7 @@ export default function (pi: ExtensionAPI) {
             const doneTime = t.status === "done" && t.completedAt
               ? ` (${formatDuration(Date.now() - new Date(t.completedAt).getTime())} ago)` : "";
 
-            return `  #${String(pos).padStart(2)}  ${t.id}  [${t.status}]  ${t.title}${assigneeStr}${meMarker}${doneTime}${filesStr}${blockedStr}${summaryStr}`;
+            return `  #${String(pos).padStart(2)}  ${t.id}  [${t.status}]  ${t.title}${assigneeStr}${meMarker}${doneTime}${filesStr}${depsStr}${blockedStr}${summaryStr}`;
           });
 
           return {
@@ -944,7 +958,7 @@ export default function (pi: ExtensionAPI) {
         // -- assign -------------------------------------------
         case "assign": {
           if (!myId || !myName) throw new Error("Not registered. Use /amux manage to set up, then /amux join.");
-          if (!params.id) throw new Error("Task ID is required for assign.");
+          if (!params.id) throw new Error("Task ID(s) required for assign (comma-separated for batch).");
           if (!params.to) throw new Error("Target agent name is required for assign.");
 
           // Reject cross-session assignment — task lives in current session backlog
@@ -957,36 +971,52 @@ export default function (pi: ExtensionAPI) {
             );
           }
 
-          const tasks = await readBacklog(mySession);
-          const task = tasks.find((t) => t.id === params.id);
-          if (!task) throw new Error(`Task ${params.id} not found.`);
-
-          if (task.status === "in-progress") {
-            throw new Error(
-              `${params.id} is actively being worked on by ${task.assignee}. Ask them to drop it first.`
-            );
-          }
-          if (task.status === "done") {
-            throw new Error(`${params.id} is already done.`);
-          }
-
           const target = await resolveAgent(params.to, mySession);
           if (!target) {
             throw new Error(`Agent "${params.to}" not found.`);
           }
 
-          task.status = "assigned";
-          task.assignee = target.name;
-          task.assigneeId = target.id;
-          task.updatedAt = new Date().toISOString();
+          // Support comma-separated IDs for batch assignment
+          const taskIds = params.id.split(",").map((s: string) => s.trim()).filter(Boolean);
+
+          const tasks = await readBacklog(mySession);
+          const toAssign: Task[] = [];
+
+          // Validate all tasks before assigning any
+          for (const taskId of taskIds) {
+            const task = tasks.find((t) => t.id === taskId);
+            if (!task) throw new Error(`Task ${taskId} not found.`);
+            if (task.status === "in-progress") {
+              throw new Error(
+                `${taskId} is actively being worked on by ${task.assignee}. Ask them to drop it first.`
+              );
+            }
+            if (task.status === "done") throw new Error(`${taskId} is already done.`);
+            toAssign.push(task);
+          }
+
+          // Assign all
+          const now = new Date().toISOString();
+          for (const task of toAssign) {
+            task.status = "assigned";
+            task.assignee = target.name;
+            task.assigneeId = target.id;
+            task.updatedAt = now;
+          }
           await writeBacklog(mySession, tasks);
 
-          // Send notification to assignee
-          const filesStr = task.files?.length ? `\nFiles: ${task.files.join(", ")}` : "";
-          const descStr = task.description ? `\n${task.description}` : "";
+          // Send single batched notification
+          const taskList = toAssign.map((t) => {
+            const filesStr = t.files?.length ? `\nFiles: ${t.files.join(", ")}` : "";
+            const descStr = t.description ? `\n${t.description}` : "";
+            const depsStr = t.dependsOn?.length ? `\nDepends on: ${t.dependsOn.join(", ")}` : "";
+            return `${t.id}: ${t.title}${descStr}${depsStr}${filesStr}`;
+          }).join("\n\n");
+
+          const batchLabel = toAssign.length === 1 ? "Task" : `${toAssign.length} tasks`;
           const notification =
-            `📋 Task assigned to you:\n${task.id}: ${task.title}${descStr}${filesStr}` +
-            `\n\n→ Use amux_task with action "pick" and id "${task.id}" to accept and start working`;
+            `📋 ${batchLabel} assigned to you:\n${taskList}` +
+            `\n\n→ Use amux_task with action "pick" and id "<TASK-ID>" to accept and start working`;
 
           const msg: InboxMessage = {
             id: newMessageId(),
@@ -1000,12 +1030,13 @@ export default function (pi: ExtensionAPI) {
           sendToInbox(target.session, target.id, msg);
 
           const targetAddr = formatAddress(target.session, target.name);
+          const assignedIds = toAssign.map((t) => t.id).join(", ");
           return {
             content: [{
               type: "text",
-              text: `Assigned ${task.id} to ${target.name}. Notification sent to ${targetAddr}.`,
+              text: `Assigned ${assignedIds} to ${target.name}. Notification sent to ${targetAddr}.`,
             }],
-            details: { task, notifiedAgent: targetAddr },
+            details: { tasks: toAssign, notifiedAgent: targetAddr },
           };
         }
 
@@ -1033,12 +1064,21 @@ export default function (pi: ExtensionAPI) {
             if (task.status === "done") {
               throw new Error(`${params.id} is already done.`);
             }
+
+            // Check dependency satisfaction
+            const unmet = unmetDependencies(task, tasks);
+            if (unmet.length > 0) {
+              throw new Error(
+                `${params.id} has unfinished dependencies: ${unmet.join(", ")}. ` +
+                `Complete those tasks first.`
+              );
+            }
           } else {
-            // Auto-pick: first "todo" task (skip "assigned"  -- those are spoken for)
-            task = tasks.find((t) => t.status === "todo");
+            // Auto-pick: first "todo" task with met dependencies
+            task = tasks.find((t) => t.status === "todo" && unmetDependencies(t, tasks).length === 0);
             if (!task) {
               throw new Error(
-                "No tasks available to pick. All tasks are assigned, in progress, blocked, or done."
+                "No tasks available to pick. All tasks are assigned, in progress, blocked, done, or waiting on dependencies."
               );
             }
           }

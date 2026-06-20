@@ -53,6 +53,7 @@ import {
   addTask,
   getTask,
   updateTask,
+  unmetDependencies,
 } from "../core/backlog.ts";
 
 import {
@@ -1053,5 +1054,89 @@ describe("Task assignment semantics", () => {
     t = await getTask(session, task.id);
     assert.equal(t!.status, "done");
     assert.equal(t!.assigneeId, "agent-a");
+  });
+});
+
+describe("Task dependencies", () => {
+  const session = testSession("task-deps");
+  after(() => cleanupSession(session));
+
+  let taskA: { id: string };
+  let taskB: { id: string };
+  let taskC: { id: string };
+
+  it("creates tasks with dependsOn", async () => {
+    const now = new Date().toISOString();
+    taskA = await addTask(session, {
+      title: "Foundation", status: "todo", createdBy: "Test",
+      createdAt: now, updatedAt: now,
+    });
+    taskB = await addTask(session, {
+      title: "Walls", status: "todo", dependsOn: [taskA.id], createdBy: "Test",
+      createdAt: now, updatedAt: now,
+    });
+    taskC = await addTask(session, {
+      title: "Roof", status: "todo", dependsOn: [taskA.id, taskB.id], createdBy: "Test",
+      createdAt: now, updatedAt: now,
+    });
+
+    const b = await getTask(session, taskB.id);
+    assert.deepStrictEqual(b!.dependsOn, [taskA.id]);
+    const c = await getTask(session, taskC.id);
+    assert.deepStrictEqual(c!.dependsOn, [taskA.id, taskB.id]);
+  });
+
+  it("unmetDependencies returns unmet dep IDs", async () => {
+    const tasks = await readBacklog(session);
+    const b = tasks.find((t) => t.id === taskB.id)!;
+    const c = tasks.find((t) => t.id === taskC.id)!;
+
+    // A is todo → B and C both have unmet deps
+    assert.deepStrictEqual(unmetDependencies(b, tasks), [taskA.id]);
+    assert.deepStrictEqual(unmetDependencies(c, tasks), [taskA.id, taskB.id]);
+  });
+
+  it("tasks without dependsOn have no unmet dependencies", async () => {
+    const tasks = await readBacklog(session);
+    const a = tasks.find((t) => t.id === taskA.id)!;
+    assert.deepStrictEqual(unmetDependencies(a, tasks), []);
+  });
+
+  it("completing a dependency satisfies downstream tasks", async () => {
+    // Complete task A
+    await updateTask(session, taskA.id, {
+      status: "done", completedAt: new Date().toISOString(),
+    });
+
+    const tasks = await readBacklog(session);
+    const b = tasks.find((t) => t.id === taskB.id)!;
+    const c = tasks.find((t) => t.id === taskC.id)!;
+
+    // B’s dependency (A) is now done
+    assert.deepStrictEqual(unmetDependencies(b, tasks), []);
+    // C still waits on B
+    assert.deepStrictEqual(unmetDependencies(c, tasks), [taskB.id]);
+  });
+
+  it("all dependencies met when entire chain is done", async () => {
+    await updateTask(session, taskB.id, {
+      status: "done", completedAt: new Date().toISOString(),
+    });
+
+    const tasks = await readBacklog(session);
+    const c = tasks.find((t) => t.id === taskC.id)!;
+    assert.deepStrictEqual(unmetDependencies(c, tasks), []);
+  });
+
+  it("backward compat: existing tasks without dependsOn are valid", async () => {
+    // Add a task the old way (no dependsOn field)
+    const legacy = await addTask(session, {
+      title: "Legacy task", status: "todo", createdBy: "Test",
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    });
+    const t = await getTask(session, legacy.id);
+    assert.equal(t!.dependsOn, undefined);
+    const tasks = await readBacklog(session);
+    assert.deepStrictEqual(unmetDependencies(t!, tasks), []);
   });
 });
