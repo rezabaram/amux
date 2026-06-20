@@ -103,6 +103,17 @@ export default function (pi: ExtensionAPI) {
     return myRoleName ? `[amux:${addr} (${myRoleName})]` : `[amux:${addr}]`;
   }
 
+  /** Check if a role name matches a built-in role template. */
+  function isBuiltinRole(name: string): boolean {
+    return BUILTIN_ROLES.some((r) => r.name === name);
+  }
+
+  /** Get all agents (any status) that reference a given role. */
+  async function getRoleUsage(session: string, roleName: string): Promise<AgentInfo[]> {
+    const registry = await readRegistry(session);
+    return Object.values(registry).filter((a) => a.roleName === roleName);
+  }
+
   // -- Agent Startup/Shutdown Helpers ---------------------------
 
   /** Common setup after register or login. */
@@ -441,13 +452,37 @@ export default function (pi: ExtensionAPI) {
               details: { roles: [] },
             };
           }
-          const lines = entries.map(
-            (r) => `- ${r.name}: ${r.instructions.slice(0, 120)}${r.instructions.length > 120 ? "…" : ""}`
-          );
+          const registry = await readRegistry(mySession);
+          const allAgents = Object.values(registry);
+          const lines = entries.map((r) => {
+            const usedBy = allAgents.filter((a) => a.roleName === r.name).map((a) => a.name);
+            const builtinTag = isBuiltinRole(r.name) ? "built-in" : "custom";
+            const usageTag = usedBy.length > 0 ? `used by: ${usedBy.join(", ")}` : "unused";
+            const truncInstr = r.instructions.slice(0, 100) + (r.instructions.length > 100 ? "…" : "");
+            return `- ${r.name} [${builtinTag}, ${usageTag}]: ${truncInstr}`;
+          });
           return { content: [{ type: "text", text: lines.join("\n") }], details: { roles: entries } };
         }
         case "remove": {
           if (!params.name) throw new Error("Role name is required for remove.");
+
+          // Rule 1: Built-in roles can't be deleted
+          if (isBuiltinRole(params.name)) {
+            throw new Error(
+              `Role "${params.name}" is a built-in role and cannot be deleted. ` +
+              `Use action "add" to customize its instructions instead.`
+            );
+          }
+
+          // Rule 2: Can't delete roles in use by agents
+          const usedBy = await getRoleUsage(mySession, params.name);
+          if (usedBy.length > 0) {
+            const names = usedBy.map((a) => a.name).join(", ");
+            throw new Error(
+              `Role "${params.name}" is used by ${names}. Reassign them first.`
+            );
+          }
+
           const removed = await removeRole(mySession, params.name);
           if (!removed) throw new Error(`Role "${params.name}" not found.`);
           return { content: [{ type: "text", text: `Role "${params.name}" removed.` }], details: {} };
@@ -1707,12 +1742,18 @@ export default function (pi: ExtensionAPI) {
 
     const roles = await readRoles(session);
     const roleNames = Object.keys(roles);
+    const registry = await readRegistry(session);
+    const allAgents = Object.values(registry);
 
     const ADD_NEW = "+ New role";
     const options = [
       ...roleNames.map((name) => {
-        const desc = roles[name]!.description || roles[name]!.instructions.slice(0, 60);
-        return `${name} -- ${desc}`;
+        const role = roles[name]!;
+        const desc = role.description || role.instructions.slice(0, 60);
+        const usedBy = allAgents.filter((a) => a.roleName === name).map((a) => a.name);
+        const builtinTag = isBuiltinRole(name) ? "built-in" : "custom";
+        const usageTag = usedBy.length > 0 ? `used by: ${usedBy.join(", ")}` : "unused";
+        return `${name} -- ${desc} (${builtinTag}, ${usageTag})`;
       }),
       ADD_NEW,
     ];
@@ -1734,10 +1775,42 @@ export default function (pi: ExtensionAPI) {
     } else {
       // Selected an existing role
       const selectedName = choice.split(" -- ")[0]!;
-      const action = await ctx.ui.select(`Role "${selectedName}":`, ["Delete"]);
+      const role = roles[selectedName];
+      if (!role) return;
+
+      const builtin = isBuiltinRole(selectedName);
+      const usedBy = allAgents.filter((a) => a.roleName === selectedName).map((a) => a.name);
+      const inUse = usedBy.length > 0;
+
+      // Build action menu based on type and usage
+      // Built-in: View | Edit
+      // Custom (in use): View | Edit
+      // Custom (unused): View | Edit | Delete
+      const actions: string[] = ["View", "Edit"];
+      if (!builtin && !inUse) {
+        actions.push("Delete");
+      }
+
+      const action = await ctx.ui.select(`Role "${selectedName}":`, actions);
       if (!action) return;
 
-      if (action === "Delete") {
+      if (action === "View") {
+        const builtinNote = builtin ? " (built-in)" : "";
+        const usageNote = inUse ? `\nUsed by: ${usedBy.join(", ")}` : "\nNot in use";
+        const descNote = role.description ? `\nDescription: ${role.description}` : "";
+        ctx.ui.notify(
+          `Role: ${selectedName}${builtinNote}${descNote}${usageNote}\n\nInstructions:\n${role.instructions}`,
+          "info"
+        );
+      } else if (action === "Edit") {
+        const newInstructions = await ctx.ui.input("Instructions:", role.instructions);
+        if (!newInstructions || newInstructions === role.instructions) {
+          ctx.ui.notify("No changes.", "info");
+          return;
+        }
+        await addRole(session, { ...role, instructions: newInstructions });
+        ctx.ui.notify(`Role "${selectedName}" updated.`, "info");
+      } else if (action === "Delete") {
         const confirm = await ctx.ui.confirm("Delete role?", `Permanently delete role "${selectedName}"?`);
         if (!confirm) { ctx.ui.notify("Cancelled.", "info"); return; }
 
