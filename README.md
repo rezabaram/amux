@@ -53,7 +53,7 @@ pi
 /amux join            # → select project → select your agent
 
 # Terminal 2: another agent joins
-cd ~/myapp-Negin && pi
+cd ~/myapp-agent1 && pi
 /amux join            # → select project → select agent → start working
 ```
 
@@ -115,7 +115,7 @@ Agents > New → name, role, workspace: "New worktree"
   → creates ~/myapp-AgentName on branch agent/AgentName
 
 # Agent starts in their worktree
-cd ~/myapp-Negin && pi
+cd ~/myapp-agent1 && pi
 /amux join
 
 # Sync from main

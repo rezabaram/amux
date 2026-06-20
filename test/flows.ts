@@ -356,12 +356,12 @@ describe("Integration: full agent workflow", () => {
     developerId = newAgentId();
 
     await registerAgent(session, {
-      id: architectId, name: "Reza", session, role: "architect",
+      id: architectId, name: "Alice", session, role: "architect",
       roleName: "architect", cwd: "/tmp", pid: 0, status: "offline",
       registeredAt: new Date().toISOString(), lastHeartbeat: new Date().toISOString(),
     });
     await registerAgent(session, {
-      id: developerId, name: "Negin", session, role: "developer",
+      id: developerId, name: "Bob", session, role: "developer",
       roleName: "developer", cwd: "/tmp", pid: 0, status: "offline",
       registeredAt: new Date().toISOString(), lastHeartbeat: new Date().toISOString(),
     });
@@ -374,12 +374,12 @@ describe("Integration: full agent workflow", () => {
 
     await addTask(session, {
       title: "Add validation", status: "todo", files: ["src/auth.ts"],
-      createdBy: "Reza", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      createdBy: "Alice", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     });
 
     ensureInbox(session, developerId);
     sendToInbox(session, developerId, {
-      id: newMessageId(), from: architectId, fromName: "Reza",
+      id: newMessageId(), from: architectId, fromName: "Alice",
       fromRole: "architect", fromSession: session,
       timestamp: new Date().toISOString(), message: "TASK-01 assigned to you",
     });
@@ -398,9 +398,9 @@ describe("Integration: full agent workflow", () => {
 
     // Pick task + reserve
     await updateTask(session, "TASK-01", {
-      status: "in-progress", assignee: "Negin", assigneeId: developerId,
+      status: "in-progress", assignee: "Bob", assigneeId: developerId,
     });
-    await reserve(session, ["src/auth.ts"], developerId, "Negin", "TASK-01");
+    await reserve(session, ["src/auth.ts"], developerId, "Bob", "TASK-01");
 
     assert.equal((await getTask(session, "TASK-01"))!.status, "in-progress");
     assert.ok(await checkConflict(session, "src/auth.ts", architectId));

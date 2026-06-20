@@ -99,7 +99,7 @@ export function getRecentEntries(session: string, limit: number = JOURNAL_WINDOW
 /**
  * Format a journal entry for display.
  * Returns a single-line string like:
- *   [2026-06-19 14:00] Negin (decision): Use zod for validation
+ *   [2026-06-19 14:00] agent1 (decision): Use zod for validation
  */
 export function formatEntry(entry: JournalEntry): string {
   const date = entry.timestamp.slice(0, 16).replace("T", " ");
