@@ -454,11 +454,21 @@ export default function (pi: ExtensionAPI) {
 - Cross-session agents: always use the full address ("othersession/agentname")
 
 ### Communication
-- Use amux_send to delegate tasks or ask questions to other agents.
+- Use amux_task for task workflow: add, assign, pick, show, comment, done/drop/block, and summary.
+- Use amux_task comment for task-scoped discussion, like PR comments. Prefer comments over amux_send for task feedback.
+- Use amux_send only for exceptional general communication that is not tied to a backlog item.
 - Use amux_list to refresh the list of available agents (set allSessions=true for cross-session).
 - Messages from other agents appear as "[amux:session/agent (role)] message".
 - When you receive a [amux:...] message, treat it as a request from a teammate and respond helpfully.
-- Reply using amux_send with the sender's address.`;
+- Reply using amux_send with the sender's address.
+
+### Backlog workflow
+- Use amux_task summary (or /amux progress) for a compact hierarchical overview before choosing work.
+- Backlog items may be typed: initiative, milestone, task, bug, chore, or spec. IDs reflect type (INIT-*, MS-*, TASK-*, BUG-*, CHORE-*, SPEC-*).
+- High-level items such as initiatives and milestones are context containers. Prefer assigning executable leaf items (task/bug/chore/spec), not container items.
+- When creating a high-level item with children, first create and review the overall structure and context. Assign/delegate child work only after the parent item is sufficiently defined.
+- When working on a child item, inspect its parent context with amux_task show before picking or implementing.
+- Task assignment is state-derived: assigned work appears in backlog/progress and prompt context; task details are not sent as inbox messages.`;
     }
 
     // Artifact paths  -- always include when agent has identity
@@ -891,11 +901,12 @@ export default function (pi: ExtensionAPI) {
       "Use action 'pick' to claim the next available task or accept an assigned task.",
       "Picking a task auto-reserves its files. Done/drop auto-releases them.",
       "Use action 'done' with a summary when completing a task.",
-      "Use action 'assign' to delegate tasks to same-session agents  -- the assignee accepts by picking.",
-      "Use dependsOn when adding a task that should wait for other tasks to complete.",
-      "Pass comma-separated IDs to assign to batch-assign multiple tasks with one notification.",
-      "Only the assignee can done/drop/block an assigned task.",
-      "Use 'show' to view task details and comment history.",
+      "Use action 'assign' to delegate executable leaf work items to same-session agents  -- the assignee accepts by picking.",
+      "Create and review high-level initiatives/milestones and their children before assigning the child work.",
+      "Use dependsOn when adding an item that should wait for other items to complete.",
+      "Pass comma-separated IDs to assign multiple items in one state update.",
+      "Only the assignee can done/drop/block an assigned item.",
+      "Use 'show' to view item details, parent context, and comment history.",
       "Use 'comment' for task-scoped discussion  -- prefer over amux_send for task-related topics.",
     ],
     parameters: Type.Object({

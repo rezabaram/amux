@@ -118,7 +118,9 @@ amux_task({ action: "comment", id: "TASK-01", content: "Looks good, one suggesti
 amux_task({ action: "summary" })
 ```
 
-Lifecycle events (assign, pick, done, drop, block) are automatically recorded as activity in `task-comments/<TASK-ID>.jsonl`. Use `amux_send` only for exceptional non-task communication.
+Lifecycle events (assign, pick, done, drop, block) are automatically recorded as activity in `task-comments/<ITEM-ID>.jsonl`. Use `amux_send` only for exceptional non-task communication.
+
+When shaping larger work, create the high-level item first (`initiative` or `milestone`), add child executable items, review the structure with `/amux progress`, then assign the leaf work. Assign `task`/`bug`/`chore`/`spec` items rather than container items unless you intentionally want broad ownership.
 
 ### Backlog Model
 
@@ -131,7 +133,7 @@ Backlog items (`BacklogItem`) support optional structure fields:
 | `parentId` | Parent item ID for hierarchy grouping |
 | `order` | Sort order within siblings |
 
-Existing items without these fields behave as regular tasks. IDs remain `TASK-*`.
+Existing items without these fields behave as regular tasks. New item IDs use type-specific prefixes: `TASK-*`, `INIT-*`, `MS-*`, `BUG-*`, `CHORE-*`, and `SPEC-*`. Existing `TASK-*` IDs remain valid.
 
 ### Availability
 
