@@ -902,7 +902,11 @@ export default function (pi: ExtensionAPI) {
       // add
       title: Type.Optional(Type.String({ description: "Task title (required for add)" })),
       description: Type.Optional(Type.String({ description: "Task description or acceptance criteria" })),
-      itemType: Type.Optional(Type.String({ description: "Item type: task (default), initiative, milestone, bug, chore, spec" })),
+      itemType: Type.Optional(
+        StringEnum(["task", "initiative", "milestone", "bug", "chore", "spec"] as const, {
+          description: "Item type: task (default), initiative, milestone, bug, chore, spec",
+        })
+      ),
       files: Type.Optional(Type.Array(Type.String({ description: "Related file paths (auto-reserved on pick)" }))),
       dependsOn: Type.Optional(Type.Array(Type.String({ description: "Task IDs this task depends on (for add)" }))),
       urgent: Type.Optional(Type.Boolean({ description: "If true, prepend to backlog instead of append" })),
