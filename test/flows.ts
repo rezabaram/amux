@@ -33,6 +33,7 @@ import {
   getRole,
   readSessionConfig,
   writeSessionConfig,
+  parseAddress,
   type AgentInfo,
 } from "../core/registry.ts";
 
@@ -972,5 +973,85 @@ describe("Join flow transactional guarantees", () => {
     // Verify model is persisted and readable for recovery
     const agent = await findById(session, id);
     assert.equal(agent!.model, model);
+  });
+});
+
+describe("Task assignment semantics", () => {
+  it("parseAddress detects cross-session references", () => {
+    const result = parseAddress("other-session/Agent", "my-session");
+    assert.equal(result.session, "other-session");
+    assert.equal(result.name, "Agent");
+  });
+
+  it("parseAddress defaults to current session for bare names", () => {
+    const result = parseAddress("Agent", "my-session");
+    assert.equal(result.session, "my-session");
+    assert.equal(result.name, "Agent");
+  });
+
+  it("explicit same-session prefix is accepted", () => {
+    const result = parseAddress("my-session/Agent", "my-session");
+    assert.equal(result.session, "my-session");
+    assert.equal(result.name, "Agent");
+  });
+
+  // Ownership rules documented for the Pi adapter (amux_task tool).
+  // Core backlog operations are data-level and do not enforce ownership;
+  // ownership is enforced at the adapter layer.
+  //
+  // Manual verification steps:
+  //
+  // Cross-session assignment rejection:
+  //   amux_task({ action: "assign", id: "TASK-01", to: "other-session/Agent" })
+  //   → "Cross-session task assignment is not supported"
+  //
+  // Assignee-only operations (done/drop/block):
+  //   1. Assign TASK-01 to AgentA
+  //   2. As AgentB, try: amux_task({ action: "done", id: "TASK-01" })
+  //      → "Only the assignee can mark it done"
+  //   3. As AgentB, try: amux_task({ action: "drop", id: "TASK-01" })
+  //      → "Only the assignee can drop it"
+  //   4. As AgentB, try: amux_task({ action: "block", id: "TASK-01", reason: "..." })
+  //      → "Only the assignee can block it"
+  //   5. As AgentA, all three actions should succeed
+
+  const session = testSession("task-own");
+  after(() => cleanupSession(session));
+
+  it("task tracks assignee through status transitions", async () => {
+    const task = await addTask(session, {
+      title: "Test ownership", status: "todo", createdBy: "Test",
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    });
+    // Assign
+    await updateTask(session, task.id, {
+      status: "assigned", assignee: "AgentA", assigneeId: "agent-a",
+    });
+    let t = await getTask(session, task.id);
+    assert.equal(t!.status, "assigned");
+    assert.equal(t!.assigneeId, "agent-a");
+
+    // Pick (in-progress)
+    await updateTask(session, task.id, {
+      status: "in-progress", assignee: "AgentA", assigneeId: "agent-a",
+    });
+    t = await getTask(session, task.id);
+    assert.equal(t!.status, "in-progress");
+
+    // Block
+    await updateTask(session, task.id, {
+      status: "blocked", blockedReason: "Waiting on API",
+    });
+    t = await getTask(session, task.id);
+    assert.equal(t!.status, "blocked");
+    assert.equal(t!.assigneeId, "agent-a");
+
+    // Done
+    await updateTask(session, task.id, {
+      status: "done", completedAt: new Date().toISOString(), summary: "Completed",
+    });
+    t = await getTask(session, task.id);
+    assert.equal(t!.status, "done");
+    assert.equal(t!.assigneeId, "agent-a");
   });
 });

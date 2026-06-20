@@ -39,6 +39,7 @@ import {
   isEffectivelyOnline,
   HEARTBEAT_INTERVAL_MS,
   resolveAgent,
+  parseAddress,
   formatAddress,
   readRoles,
   getRole,
@@ -835,7 +836,7 @@ export default function (pi: ExtensionAPI) {
     label: "Task Backlog",
     description:
       "Manage the task backlog. Actions: add (create task), list (show tasks), " +
-      "assign (delegate to agent), pick (claim/accept task), done (complete), " +
+      "assign (delegate to same-session agent), pick (claim/accept task), done (complete), " +
       "drop (release back to queue), block (mark blocked). " +
       "Picking a task auto-reserves its files. Done/drop auto-releases them.",
     promptSnippet: "Manage task backlog  -- add, list, assign, pick, done, drop, block",
@@ -843,7 +844,8 @@ export default function (pi: ExtensionAPI) {
       "Use action 'pick' to claim the next available task or accept an assigned task.",
       "Picking a task auto-reserves its files. Done/drop auto-releases them.",
       "Use action 'done' with a summary when completing a task.",
-      "Use action 'assign' to delegate tasks  -- the assignee accepts by picking.",
+      "Use action 'assign' to delegate tasks to same-session agents  -- the assignee accepts by picking.",
+      "Only the assignee can done/drop/block an assigned task.",
     ],
     parameters: Type.Object({
       action: StringEnum(["add", "list", "assign", "pick", "done", "drop", "block"] as const),
@@ -944,6 +946,16 @@ export default function (pi: ExtensionAPI) {
           if (!myId || !myName) throw new Error("Not registered. Use /amux manage to set up, then /amux join.");
           if (!params.id) throw new Error("Task ID is required for assign.");
           if (!params.to) throw new Error("Target agent name is required for assign.");
+
+          // Reject cross-session assignment — task lives in current session backlog
+          const { session: targetSession } = parseAddress(params.to, mySession);
+          if (targetSession !== mySession) {
+            throw new Error(
+              `Cross-session task assignment is not supported. ` +
+              `"${params.to}" resolves to session "${targetSession}", but tasks ` +
+              `can only be assigned to agents within the current session ("${mySession}").`
+            );
+          }
 
           const tasks = await readBacklog(mySession);
           const task = tasks.find((t) => t.id === params.id);
@@ -1165,6 +1177,12 @@ export default function (pi: ExtensionAPI) {
           const task = tasks.find((t) => t.id === params.id);
           if (!task) throw new Error(`Task ${params.id} not found.`);
           if (task.status === "done") throw new Error(`${params.id} is already done.`);
+
+          if (task.assigneeId && task.assigneeId !== myId) {
+            throw new Error(
+              `${params.id} is assigned to ${task.assignee}. Only the assignee can block it.`
+            );
+          }
 
           task.status = "blocked";
           task.blockedReason = params.reason;

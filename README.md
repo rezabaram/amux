@@ -137,7 +137,7 @@ cd ~/myapp-agent1 && pi
 - **Heartbeat presence** -- crashed agents auto-expire after 90s, stale reservations cleared automatically
 - **Crash-safe messaging** -- messages survive crashes, delivered on reconnect
 - **File reservations** -- claim files before editing, prevent conflicts
-- **Task backlog** -- assign/pick/done with auto file reservation
+- **Task backlog** -- assign/pick/done with auto file reservation, same-session assignment, assignee ownership
 - **Shared journal** -- decisions and learnings in every agent's context
 - **Git workspaces** -- isolated worktrees per agent
 - **Built-in roles** -- ready to use, customizable per project
