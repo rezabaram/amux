@@ -28,6 +28,7 @@ import {
   getOnlineAgents,
   getOfflineAgents,
   isEffectivelyOnline,
+  shouldSignalAgent,
   HEARTBEAT_TTL_MS,
   readRoles,
   addRole,
@@ -1312,5 +1313,75 @@ describe("Task-scoped comments", () => {
     const t = await getTask(session, task.id);
     assert.equal(t!.title, "Test comment isolation");
     assert.equal((t as any).comments, undefined);
+  });
+});
+
+describe("Agent availability and attention signals", () => {
+  const session = testSession("availability");
+  const freshTime = new Date().toISOString();
+  after(() => cleanupSession(session));
+
+  let agentId: string;
+
+  it("creates an agent with availability", async () => {
+    agentId = newAgentId();
+    await registerAgent(session, {
+      id: agentId, name: "Avail", session,
+      role: "dev", cwd: "/tmp", pid: 1, status: "online",
+      availability: "idle",
+      registeredAt: freshTime, lastHeartbeat: freshTime,
+    });
+    const agent = await findById(session, agentId);
+    assert.equal(agent!.availability, "idle");
+  });
+
+  it("shouldSignalAgent is true for idle online agent", async () => {
+    const agent = await findById(session, agentId);
+    assert.ok(shouldSignalAgent(agent!));
+  });
+
+  it("shouldSignalAgent is false for working agent", async () => {
+    await updateAgent(session, agentId, { availability: "working" });
+    const agent = await findById(session, agentId);
+    assert.equal(shouldSignalAgent(agent!), false);
+  });
+
+  it("shouldSignalAgent is false for focus agent", async () => {
+    await updateAgent(session, agentId, { availability: "focus" });
+    const agent = await findById(session, agentId);
+    assert.equal(shouldSignalAgent(agent!), false);
+  });
+
+  it("shouldSignalAgent is false for away agent", async () => {
+    await updateAgent(session, agentId, { availability: "away" });
+    const agent = await findById(session, agentId);
+    assert.equal(shouldSignalAgent(agent!), false);
+  });
+
+  it("shouldSignalAgent is false when attentionPending", async () => {
+    await updateAgent(session, agentId, { availability: "idle", attentionPending: true });
+    const agent = await findById(session, agentId);
+    assert.equal(shouldSignalAgent(agent!), false);
+  });
+
+  it("shouldSignalAgent is true after clearing attentionPending", async () => {
+    await updateAgent(session, agentId, { attentionPending: false });
+    const agent = await findById(session, agentId);
+    assert.ok(shouldSignalAgent(agent!));
+  });
+
+  it("shouldSignalAgent is false for offline agents", async () => {
+    await updateAgent(session, agentId, { status: "offline" });
+    const agent = await findById(session, agentId);
+    assert.equal(shouldSignalAgent(agent!), false);
+  });
+
+  it("preserves focus/away through task lifecycle updates", async () => {
+    // If agent is focus, auto-updates should not override to idle
+    await updateAgent(session, agentId, { status: "online", availability: "focus" });
+    const agent = await findById(session, agentId);
+    assert.equal(agent!.availability, "focus");
+    // In the Pi adapter, done/drop only sets idle if availability is working or unset
+    // This test documents the invariant at the core level
   });
 });

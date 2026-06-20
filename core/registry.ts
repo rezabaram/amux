@@ -34,6 +34,10 @@ export interface AgentInfo {
   pane?: string; // tmux pane target (optional — only if tmux)
   pid: number;
   status: "online" | "offline";
+  availability?: "idle" | "working" | "focus" | "away";
+  statusMessage?: string; // freeform status message
+  availabilityUpdatedAt?: string; // ISO 8601
+  attentionPending?: boolean; // coalesced attention flag
   registeredAt: string; // ISO 8601
   lastHeartbeat: string; // ISO 8601
 }
@@ -79,6 +83,19 @@ export function isEffectivelyOnline(agent: AgentInfo): boolean {
   if (agent.status !== "online") return false;
   const elapsed = Date.now() - new Date(agent.lastHeartbeat).getTime();
   return elapsed < HEARTBEAT_TTL_MS;
+}
+
+/**
+ * Check whether an agent should receive a generic attention signal.
+ * True only if the agent is effectively online, idle (or no availability set),
+ * and does not already have a pending attention flag.
+ */
+export function shouldSignalAgent(agent: AgentInfo): boolean {
+  return (
+    isEffectivelyOnline(agent) &&
+    (!agent.availability || agent.availability === "idle") &&
+    !agent.attentionPending
+  );
 }
 
 // ─── Paths ───────────────────────────────────────────────────

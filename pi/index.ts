@@ -42,6 +42,7 @@ import {
   getOnlineAgents,
   getOfflineAgents,
   isEffectivelyOnline,
+  shouldSignalAgent,
   HEARTBEAT_INTERVAL_MS,
   resolveAgent,
   parseAddress,
@@ -344,6 +345,14 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event) => {
     if (!mySession || !myName) return;
 
+    // Clear attention pending flag on agent interaction
+    if (myId) {
+      const self = await findById(mySession, myId);
+      if (self?.attentionPending) {
+        await updateAgent(mySession, myId, { attentionPending: false });
+      }
+    }
+
     let extra = "";
 
     // Inject role instructions
@@ -420,7 +429,8 @@ export default function (pi: ExtensionAPI) {
         const list = projectAgents
           .map((a) => {
             const roleLabel = a.roleName || a.role;
-            return `  - ${a.name} (${roleLabel}) [${a.status}]`;
+            const avail = a.availability ? `, ${a.availability}` : "";
+            return `  - ${a.name} (${roleLabel}) [${a.status}${avail}]`;
           })
           .join("\n");
         extra += `\n\nSame-session agents (address as "${mySession}/<name>" or just "<name>"):\n${list}`;
@@ -1113,6 +1123,20 @@ export default function (pi: ExtensionAPI) {
             });
           }
 
+          // Generic attention signal for idle agents (coalesced)
+          const targetAgent = await findById(mySession, target.id);
+          if (targetAgent && shouldSignalAgent(targetAgent)) {
+            await updateAgent(mySession, target.id, { attentionPending: true });
+            sendToInbox(mySession, target.id, {
+              id: newMessageId(),
+              from: myId,
+              fromName: myName || "system",
+              fromSession: mySession,
+              timestamp: new Date().toISOString(),
+              message: "Your amux state has changed. Check /amux or amux_task list for current tasks.",
+            });
+          }
+
           const assignedIds = toAssign.map((t) => t.id).join(", ");
           return {
             content: [{
@@ -1180,6 +1204,12 @@ export default function (pi: ExtensionAPI) {
             agentId: myId,
             type: "activity",
             text: `Picked by ${myName}`,
+          });
+
+          // Auto-set availability to working
+          await updateAgent(mySession, myId, {
+            availability: "working",
+            availabilityUpdatedAt: new Date().toISOString(),
           });
 
           // Auto-reserve files (partial success  -- Option B)
@@ -1251,6 +1281,18 @@ export default function (pi: ExtensionAPI) {
             text: `Completed${params.summary ? `: ${params.summary}` : ""}`,
           });
 
+          // Auto-set idle if no other in-progress tasks (preserve focus/away)
+          const remainingAfterDone = tasks.filter((t) => t.status === "in-progress" && t.assigneeId === myId);
+          if (remainingAfterDone.length === 0) {
+            const agentSelf = await findById(mySession, myId);
+            if (!agentSelf?.availability || agentSelf.availability === "working") {
+              await updateAgent(mySession, myId, {
+                availability: "idle",
+                availabilityUpdatedAt: new Date().toISOString(),
+              });
+            }
+          }
+
           // Auto-release file reservations
           let released: string[] = [];
           if (task.files?.length) {
@@ -1298,6 +1340,18 @@ export default function (pi: ExtensionAPI) {
             type: "activity",
             text: `Dropped \u2014 back in queue`,
           });
+
+          // Auto-set idle if no other in-progress tasks (preserve focus/away)
+          const remainingAfterDrop = tasks.filter((t) => t.status === "in-progress" && t.assigneeId === myId);
+          if (remainingAfterDrop.length === 0) {
+            const agentSelf = await findById(mySession, myId);
+            if (!agentSelf?.availability || agentSelf.availability === "working") {
+              await updateAgent(mySession, myId, {
+                availability: "idle",
+                availabilityUpdatedAt: new Date().toISOString(),
+              });
+            }
+          }
 
           // Auto-release file reservations
           let released: string[] = [];
@@ -1466,13 +1520,16 @@ export default function (pi: ExtensionAPI) {
           return handleManage(ctx);
         case "workspace":
           return handleWorkspace(ctx);
+        case "status":
+          if (parts[1] === "set") return handleStatusSet(parts.slice(2), ctx);
+          return handleStatus(ctx);
         case "new":
           return handleNew(parts.slice(1), ctx);
         case "context":
           return handleContext(parts.slice(1), ctx);
         default:
           ctx.ui.notify(
-            `Unknown: /amux ${sub}\n\nAvailable:\n  /amux              Status\n  /amux join          Join a project as an agent\n  /amux leave         Leave current project\n  /amux manage        Manage projects, agents, and roles\n  /amux new <type>    Create project, agent, or role directly\n  /amux context       Show/edit project context (CONTEXT.md)\n  /amux workspace     Git workspace setup and sync`,
+            `Unknown: /amux ${sub}\n\nAvailable:\n  /amux              Status\n  /amux join          Join a project as an agent\n  /amux leave         Leave current project\n  /amux manage        Manage projects, agents, and roles\n  /amux new <type>    Create project, agent, or role directly\n  /amux context       Show/edit project context (CONTEXT.md)\n  /amux status set    Set your availability (idle/working/focus/away)\n  /amux workspace     Git workspace setup and sync`,
             "warning"
           );
       }
@@ -1510,8 +1567,12 @@ export default function (pi: ExtensionAPI) {
       taskLine = `\n${assigned.length} assigned task(s): ${ids}`;
     }
 
+    // Availability
+    const me = await findById(mySession, myId);
+    const availStr = me?.availability ? ` | ${me.availability}${me.statusMessage ? `: ${me.statusMessage}` : ""}` : "";
+
     ctx.ui.notify(
-      `Project: ${mySession} | Agent: ${myName} (${myRoleName || "no role"})${taskLine}\n\nOnline:\n${agentLines.join("\n")}\n\n  /amux join          Switch project or agent\n  /amux leave         Leave project\n  /amux manage        Manage projects, agents, and roles\n  /amux new <type>    Create project, agent, or role directly\n  /amux context       Show/edit project context\n  /amux workspace     Git workspace setup and sync`,
+      `Project: ${mySession} | Agent: ${myName} (${myRoleName || "no role"})${availStr}${taskLine}\n\nOnline:\n${agentLines.join("\n")}\n\n  /amux join          Switch project or agent\n  /amux leave         Leave project\n  /amux manage        Manage projects, agents, and roles\n  /amux new <type>    Create project, agent, or role directly\n  /amux context       Show/edit project context\n  /amux status set    Set your availability\n  /amux workspace     Git workspace setup and sync`,
       "info"
     );
   }
@@ -2354,6 +2415,38 @@ export default function (pi: ExtensionAPI) {
           "info"
         );
     }
+  }
+
+
+  // -- status set command ---------------------------------------
+
+  async function handleStatusSet(args: string[], ctx: ExtensionContext): Promise<void> {
+    if (!mySession || !myId) {
+      ctx.ui.notify("Not in a project. Use /amux join first.", "warning");
+      return;
+    }
+
+    const validStates = ["idle", "working", "focus", "away"];
+    const state = args[0];
+    if (!state || !validStates.includes(state)) {
+      ctx.ui.notify(
+        "Usage: /amux status set <idle|working|focus|away> [message]",
+        "info"
+      );
+      return;
+    }
+
+    const message = args.slice(1).join(" ").trim() || undefined;
+    await updateAgent(mySession, myId, {
+      availability: state as AgentInfo["availability"],
+      statusMessage: message,
+      availabilityUpdatedAt: new Date().toISOString(),
+    });
+
+    ctx.ui.notify(
+      `Availability set to ${state}${message ? `: ${message}` : ""}.`,
+      "info"
+    );
   }
 
 
