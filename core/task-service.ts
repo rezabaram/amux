@@ -55,6 +55,13 @@ export interface CompleteResult {
   nowIdle: boolean;
 }
 
+export interface ReviewResult {
+  task: BacklogItem;
+  released: string[];
+  /** Whether the implementer has no remaining in-progress tasks. */
+  nowIdle: boolean;
+}
+
 export interface DropResult {
   task: BacklogItem;
   released: string[];
@@ -95,6 +102,7 @@ export async function serviceAssignTasks(
     if (task.status === "in-progress") {
       throw new Error(`${taskId} is actively being worked on by ${task.assignee}. Ask them to drop it first.`);
     }
+    if (task.status === "review") throw new Error(`${taskId} is ready for review. Complete or pick it for changes instead.`);
     if (task.status === "done") throw new Error(`${taskId} is already done.`);
     toAssign.push(task);
   }
@@ -235,7 +243,7 @@ export async function serviceCompleteTask(
   const task = tasks.find((t) => t.id === taskId);
   if (!task) throw new Error(`Task ${taskId} not found.`);
   if (task.status === "done") throw new Error(`${taskId} is already done.`);
-  if (task.assigneeId && task.assigneeId !== agentId) {
+  if (task.assigneeId && task.assigneeId !== agentId && task.status !== "review") {
     throw new Error(`${taskId} is assigned to ${task.assignee}. Only the assignee can mark it done.`);
   }
 
@@ -260,6 +268,61 @@ export async function serviceCompleteTask(
   }
 
   // Check if agent should transition to idle
+  const remainingActive = tasks.filter((t) => t.status === "in-progress" && t.assigneeId === agentId);
+  let nowIdle = false;
+  if (remainingActive.length === 0) {
+    const agent = await findById(session, agentId);
+    if (!agent?.availability || agent.availability === "working") {
+      await updateAgent(session, agentId, { availability: "idle", availabilityUpdatedAt: new Date().toISOString() });
+      nowIdle = true;
+    }
+  }
+
+  return { task, released, nowIdle };
+}
+
+// ─── Review ──────────────────────────────────────────────────
+
+/**
+ * Mark implementation ready for review. Releases file reservations and checks for idle.
+ */
+export async function serviceReviewTask(
+  session: string,
+  taskId: string,
+  agentId: string,
+  agentName: string,
+  summary?: string,
+): Promise<ReviewResult> {
+  const tasks = await readBacklog(session);
+  const task = tasks.find((t) => t.id === taskId);
+  if (!task) throw new Error(`Task ${taskId} not found.`);
+  if (task.status === "done") throw new Error(`${taskId} is already done.`);
+  if (task.status === "review") throw new Error(`${taskId} is already ready for review.`);
+  if (task.status !== "in-progress") {
+    throw new Error(`${taskId} must be in progress before it can be marked ready for review.`);
+  }
+  if (task.assigneeId && task.assigneeId !== agentId) {
+    throw new Error(`${taskId} is assigned to ${task.assignee}. Only the assignee can mark it ready for review.`);
+  }
+
+  task.status = "review";
+  task.updatedAt = new Date().toISOString();
+  if (summary) task.summary = summary;
+  await writeBacklog(session, tasks);
+
+  appendTaskComment(session, task.id, {
+    timestamp: task.updatedAt,
+    agent: agentName,
+    agentId,
+    type: "activity",
+    text: `Ready for review${summary ? `: ${summary}` : ""}`,
+  });
+
+  let released: string[] = [];
+  if (task.files?.length) {
+    released = await release(session, task.files, agentId);
+  }
+
   const remainingActive = tasks.filter((t) => t.status === "in-progress" && t.assigneeId === agentId);
   let nowIdle = false;
   if (remainingActive.length === 0) {

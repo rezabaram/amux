@@ -25,7 +25,7 @@ export interface BacklogItem {
   title: string;
   description?: string;
   itemType?: "task" | "initiative" | "milestone" | "bug" | "chore" | "spec";
-  status: "todo" | "assigned" | "in-progress" | "done" | "blocked";
+  status: "todo" | "assigned" | "in-progress" | "review" | "done" | "blocked";
   assignee?: string; // agent display name
   assigneeId?: string; // agent UUID
   dependsOn?: string[]; // task IDs that must be done before this item can be picked

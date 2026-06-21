@@ -33,6 +33,7 @@ function statusMarker(status: string): string {
   switch (status) {
     case "done": return "\u2713";
     case "in-progress": return "\u25b6";
+    case "review": return "◇";
     case "blocked": return "\u26a0";
     case "assigned": return "\u2192";
     default: return "\u25cb";
@@ -57,6 +58,7 @@ export interface AgentPresenceInfo {
 
 export interface AgentWorkState {
   active?: BacklogItem;
+  review: BacklogItem[];
   assigned: BacklogItem[];
 }
 
@@ -70,6 +72,7 @@ export interface RenderAgentPresenceOptions {
 export function agentWorkState(agentId: string, tasks: BacklogItem[]): AgentWorkState {
   return {
     active: tasks.find((t) => t.status === "in-progress" && t.assigneeId === agentId),
+    review: tasks.filter((t) => t.status === "review" && t.assigneeId === agentId),
     assigned: tasks.filter((t) => t.status === "assigned" && t.assigneeId === agentId),
   };
 }
@@ -78,6 +81,8 @@ export function agentWorkState(agentId: string, tasks: BacklogItem[]): AgentWork
 export function renderAgentWorkState(agentId: string, tasks: BacklogItem[]): string | null {
   const state = agentWorkState(agentId, tasks);
   if (state.active) return `working: ${state.active.id}`;
+  if (state.review.length === 1) return `ready for review: ${state.review[0]!.id}`;
+  if (state.review.length > 1) return `ready for review: ${state.review.length} tasks`;
   if (state.assigned.length === 1) return `assigned: ${state.assigned[0]!.id}`;
   if (state.assigned.length > 1) return `assigned: ${state.assigned.length} tasks`;
   return null;
@@ -220,7 +225,7 @@ export function renderProgressSummary(
     counts[t.status] = (counts[t.status] || 0) + 1;
   }
   const total = tasks.length;
-  const statusLine = ["todo", "assigned", "in-progress", "blocked", "done"]
+  const statusLine = ["todo", "assigned", "in-progress", "review", "blocked", "done"]
     .filter((s) => counts[s])
     .map((s) => `${counts[s]} ${s}`)
     .join(" \u00b7 ");

@@ -110,6 +110,7 @@ import {
   serviceAssignTasks,
   servicePickTask,
   serviceCompleteTask,
+  serviceReviewTask,
   serviceDropTask,
   serviceBlockTask,
 } from "../core/task-service.ts";
@@ -1547,6 +1548,8 @@ describe("Progress summary data patterns", () => {
     await updateTask(session, "TASK-02", { status: "in-progress", assignee: "Alice" });
     await addTask(session, { title: "Blocked task", status: "todo", ...base });
     await updateTask(session, "TASK-03", { status: "blocked", blockedReason: "Waiting on API" });
+    await addTask(session, { title: "Review task", status: "todo", ...base });
+    await updateTask(session, "TASK-04", { status: "review", assignee: "Bob" });
     await addTask(session, { title: "Todo task", status: "todo", ...base });
     await addTask(session, { title: "Dep-blocked", status: "todo", dependsOn: ["TASK-02"], ...base });
 
@@ -1554,6 +1557,7 @@ describe("Progress summary data patterns", () => {
     const done = tasks.filter((t) => t.status === "done");
     const active = tasks.filter((t) => t.status === "in-progress");
     const blocked = tasks.filter((t) => t.status === "blocked");
+    const review = tasks.filter((t) => t.status === "review");
     const next = tasks.filter((t) => t.status === "todo" && unmetDependencies(t, tasks).length === 0);
 
     assert.equal(done.length, 1);
@@ -1561,13 +1565,15 @@ describe("Progress summary data patterns", () => {
     assert.equal(active[0]!.assignee, "Alice");
     assert.equal(blocked.length, 1);
     assert.equal(blocked[0]!.blockedReason, "Waiting on API");
+    assert.equal(review.length, 1);
+    assert.equal(review[0]!.assignee, "Bob");
     assert.equal(next.length, 1, "Dep-blocked item should be excluded from next");
     assert.equal(next[0]!.title, "Todo task");
   });
 
   // Manual test for /amux progress:
   //   1. /amux join a project with mixed backlog
-  //   2. /amux progress → see status counts, active, blocked, next, done
+  //   2. /amux progress → see status counts, active, review, blocked, next, done
   //   3. amux_task({ action: "summary" }) → same compact view
   //   4. Verify parent items show with indented children and [N/M] counts
   //
@@ -1951,10 +1957,12 @@ describe("Renderer functions", () => {
       baseItem({ id: "TASK-01", title: "Done", status: "done", completedAt: now }),
       baseItem({ id: "TASK-02", title: "Active", status: "in-progress", assignee: "Alice" }),
       baseItem({ id: "TASK-03", title: "Todo", status: "todo" }),
+      baseItem({ id: "TASK-04", title: "Needs review", status: "review", assignee: "Bob" }),
     ];
     const out = renderProgressSummary("test", tasks);
     assert.ok(out.includes("1 todo"));
     assert.ok(out.includes("1 in-progress"));
+    assert.ok(out.includes("1 review"));
     assert.ok(out.includes("1 done"));
     assert.ok(out.includes("TASK-02"));
     assert.ok(out.includes("Alice"));
@@ -2049,10 +2057,16 @@ describe("Task workflow service", () => {
     );
   });
 
-  it("serviceCompleteTask marks done with summary", async () => {
-    const result = await serviceCompleteTask(session, "TASK-01", devId, "Dev", "Done!");
+  it("serviceReviewTask marks in-progress work ready for review", async () => {
+    const result = await serviceReviewTask(session, "TASK-01", devId, "Dev", "Ready!");
+    assert.equal(result.task.status, "review");
+    assert.equal(result.task.summary, "Ready!");
+  });
+
+  it("serviceCompleteTask lets a reviewer complete review-ready work", async () => {
+    const result = await serviceCompleteTask(session, "TASK-01", archId, "Arch", "Integrated!");
     assert.equal(result.task.status, "done");
-    assert.equal(result.task.summary, "Done!");
+    assert.equal(result.task.summary, "Integrated!");
   });
 
   it("servicePickTask allows dep-met task after completion", async () => {

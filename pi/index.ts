@@ -108,6 +108,7 @@ import {
   serviceAssignTasks,
   servicePickTask,
   serviceCompleteTask,
+  serviceReviewTask,
   serviceDropTask,
   serviceBlockTask,
   serviceGetTaskShowData,
@@ -394,6 +395,7 @@ export default function (pi: ExtensionAPI) {
     if (myId) {
       const backlog = await readBacklog(mySession);
       const inProgress = backlog.filter((t) => t.status === "in-progress" && t.assigneeId === myId);
+      const review = backlog.filter((t) => t.status === "review" && t.assigneeId === myId);
       const assigned = backlog.filter((t) => t.status === "assigned" && t.assigneeId === myId);
 
       if (inProgress.length > 0) {
@@ -413,6 +415,11 @@ export default function (pi: ExtensionAPI) {
           const recent = comments.slice(-3);
           extra += `\nRecent activity:\n${recent.map((c) => `- ${formatTaskComment(c)}`).join("\n")}`;
         }
+      }
+
+      if (review.length > 0) {
+        const ids = review.map((t) => `${t.id}: ${t.title}`).join("\n  ");
+        extra += `\n\n## Ready for Review (${review.length})\n  ${ids}\n\nThese are implemented and waiting for review/integration. Use amux_task comment for review discussion.`;
       }
 
       if (assigned.length > 0) {
@@ -487,7 +494,7 @@ export default function (pi: ExtensionAPI) {
 - Project context is prompt-injected for future agents and should capture the goal, constraints, principles, and north star.
 
 ### Communication
-- Use amux_task for task workflow: add, assign, pick, show, comment, done/drop/block, and summary.
+- Use amux_task for task workflow: add, assign, pick, show, comment, review, done/drop/block, and summary.
 - Use amux_task comment for task-scoped discussion, like PR comments. Prefer comments over amux_send for task feedback.
 - Use amux_send only for exceptional general communication that is not tied to a backlog item.
 - Use amux_list to refresh the list of available agents (set allSessions=true for cross-session).
@@ -1007,28 +1014,28 @@ export default function (pi: ExtensionAPI) {
       "Manage the task backlog. Actions: add (create task), list (show tasks), " +
       "show (task details + comments/spec preview), comment (add task-scoped comment), " +
       "plan/edit-plan (manage task-linked specs), " +
-      "assign (delegate to same-session agent, comma-separated IDs for batch), pick (claim/accept task), done (complete), " +
-      "drop (release back to queue), block (mark blocked). " +
+      "assign (delegate to same-session agent, comma-separated IDs for batch), pick (claim/accept task), " +
+      "review (mark implementation ready for review), done (complete), drop (release back to queue), block (mark blocked). " +
       "Tasks can declare dependencies via dependsOn. " +
       "Picking a task auto-reserves its files. Done/drop auto-releases them.",
-    promptSnippet: "Manage task backlog  -- add, list, show, comment, plan, edit-plan, assign, pick, done, drop, block",
+    promptSnippet: "Manage task backlog  -- add, list, show, comment, plan, edit-plan, assign, pick, review, done, drop, block",
     promptGuidelines: [
       "Use action 'pick' to claim the next available task or accept an assigned task.",
       "Picking a task auto-reserves its files. Done/drop auto-releases them.",
-      "Use action 'done' with a summary when completing a task.",
+      "Use action 'review' when implementation is ready for review/integration, and 'done' when reviewed/integrated/verified.",
       "Use action 'assign' to delegate executable leaf work items to same-session agents  -- the assignee accepts by picking.",
       "Create and review high-level initiatives/milestones and their children before assigning executable child work.",
       "It is OK to assign all defined leaf work up front; use dependsOn to enforce order, and assignees should pick one item at a time after completing the current item.",
       "When working on a child item, inspect its parent context with amux_task show before picking or implementing.",
       "Use dependsOn when adding an item that should wait for other items to complete.",
       "Pass comma-separated IDs to assign multiple items in one state update.",
-      "Only the assignee can done/drop/block an assigned item.",
+      "Only the assignee can review/drop/block an assigned item; review items can be completed by a reviewer.",
       "Use 'show' to view item details, parent context, linked spec preview, and comment history.",
       "Use 'plan' and 'edit-plan' for first-class task-linked specs/checklists instead of ad-hoc project artifacts.",
       "Use 'comment' for task-scoped discussion  -- prefer over amux_send for task-related topics.",
     ],
     parameters: Type.Object({
-      action: StringEnum(["add", "list", "show", "comment", "plan", "edit-plan", "assign", "pick", "done", "drop", "block", "summary"] as const),
+      action: StringEnum(["add", "list", "show", "comment", "plan", "edit-plan", "assign", "pick", "review", "done", "drop", "block", "summary"] as const),
       // add
       title: Type.Optional(Type.String({ description: "Task title (required for add)" })),
       description: Type.Optional(Type.String({ description: "Task description or acceptance criteria" })),
@@ -1046,10 +1053,10 @@ export default function (pi: ExtensionAPI) {
       id: Type.Optional(Type.String({ description: "Task ID (e.g. TASK-01)" })),
       to: Type.Optional(Type.String({ description: "Agent name to assign the task to" })),
       reason: Type.Optional(Type.String({ description: "Reason for blocking, or approach note for pick" })),
-      summary: Type.Optional(Type.String({ description: "Completion summary (for done)" })),
+      summary: Type.Optional(Type.String({ description: "Summary for review or done" })),
       content: Type.Optional(Type.String({ description: "Comment text (for comment), or markdown spec content (for plan)" })),
       // list
-      status: Type.Optional(Type.String({ description: "Filter by status: todo, assigned, in-progress, done, blocked" })),
+      status: Type.Optional(Type.String({ description: "Filter by status: todo, assigned, in-progress, review, done, blocked" })),
     }),
 
     async execute(_id, params) {
@@ -1277,6 +1284,23 @@ export default function (pi: ExtensionAPI) {
           };
         }
 
+        // -- review -------------------------------------------
+        case "review": {
+          if (!myId) throw new Error("Not registered. Use /amux manage to set up, then /amux join.");
+          if (!params.id) throw new Error("Task ID is required for review.");
+
+          const reviewResult = await serviceReviewTask(mySession, params.id, myId, myName || "agent", params.summary);
+
+          let reviewText = `◇ Ready for review ${reviewResult.task.id}: ${reviewResult.task.title}`;
+          if (params.summary) reviewText += `\n  Summary: ${params.summary}`;
+          if (reviewResult.released.length > 0) reviewText += `\n  Released: ${reviewResult.released.join(", ")}`;
+
+          return {
+            content: [{ type: "text", text: reviewText }],
+            details: reviewResult,
+          };
+        }
+
         // -- done ---------------------------------------------
         case "done": {
           if (!myId) throw new Error("Not registered. Use /amux manage to set up, then /amux join.");
@@ -1482,9 +1506,13 @@ export default function (pi: ExtensionAPI) {
     // Task state summary
     let taskLine = "";
     const inProgress = backlog.filter((t) => t.status === "in-progress" && t.assigneeId === myId);
+    const review = backlog.filter((t) => t.status === "review" && t.assigneeId === myId);
     const assigned = backlog.filter((t) => t.status === "assigned" && t.assigneeId === myId);
     if (inProgress.length > 0) {
       taskLine = `\nActive: ${inProgress[0]!.id} [in-progress] \u2014 ${inProgress[0]!.title}`;
+    } else if (review.length > 0) {
+      const ids = review.map((t) => t.id).join(", ");
+      taskLine = `\n${review.length} ready for review: ${ids}`;
     } else if (assigned.length > 0) {
       const ids = assigned.map((t) => t.id).join(", ");
       taskLine = `\n${assigned.length} assigned task(s): ${ids}`;

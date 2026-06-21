@@ -12,6 +12,7 @@
 - **Read-only CLI phase 1**: `amux progress`, `amux show`, `amux list`/`amux task list`, and `amux status` now use shared services/renderers.
 - **Project vision**: `VISION.md` now states amux's goal of efficient communication, high alignment, and synergistic multi-agent collaboration.
 - **First-class project vision/context interface**: `amux_project` and `/amux project vision ...` manage the prompt-injected project alignment artifact without direct file edits.
+- **Team-state visibility and review handoff**: agent presence surfaces active/assigned work, and `amux_task review` marks implementation ready for review before final `done`.
 
 ### Changed
 

@@ -149,7 +149,7 @@ amux_task({ action: "comment", id: "TASK-01", content: "Looks good, one suggesti
 amux_task({ action: "summary" })
 ```
 
-Lifecycle events (assign, pick, done, drop, block) are automatically recorded as activity in `task-comments/<ITEM-ID>.jsonl`. Use `amux_send` only for exceptional non-task communication.
+Lifecycle events (assign, pick, review, done, drop, block) are automatically recorded as activity in `task-comments/<ITEM-ID>.jsonl`. Use `review` when implementation is ready for review/integration; use `done` when work is reviewed, integrated, and verified. Simple workflows can still mark work done directly. Use `amux_send` only for exceptional non-task communication.
 
 When shaping larger work, create the high-level item first (`initiative` or `milestone`), add child executable items, review the structure with `/amux progress`, then assign the leaf work. Assign `task`/`bug`/`chore`/`spec` items rather than container items unless you intentionally want broad ownership.
 
@@ -207,7 +207,7 @@ Availability is auto-updated by task lifecycle: `pick` → working, `done`/`drop
 | `amux_artifacts` | -- | List shared documents |
 | `amux_project` | show, set, append, clear, path | Manage project vision/context |
 | `amux_reserve` | claim, release, list | File/directory reservations |
-| `amux_task` | add, list, show, comment, assign, pick, done, drop, block, summary | Task backlog with comments, dependencies, batch assign |
+| `amux_task` | add, list, show, comment, assign, pick, review, done, drop, block, summary | Task backlog with comments, dependencies, batch assign |
 | `amux_journal` | add, list | Record decisions and learnings |
 
 ## Built-in Roles
