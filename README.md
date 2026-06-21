@@ -75,6 +75,7 @@ Session is auto-detected if only one exists. The CLI uses shared core services a
 # Terminal 1: set up the project
 pi
 /amux manage          # → Projects > New → create project
+/amux project vision set "Build ..."  # first alignment artifact for agents
                       # → Roles > New → define roles (or use built-ins)
                       # → Agents > New → create agents with workspaces
 /amux join            # → select project → select your agent
@@ -97,32 +98,39 @@ All commands are subcommands of `/amux`:
 | `/amux progress` | Project progress overview |
 | `/amux show <ITEM-ID>` | Show backlog item details, comments, parent context, and spec preview |
 | `/amux new <type>` | Create project, agent, or role directly |
-| `/amux context` | Show/edit project context (CONTEXT.md) |
+| `/amux project` | Show/set project vision/context |
+| `/amux context` | Legacy alias for project context (CONTEXT.md) |
 | `/amux status set` | Set your availability (idle/working/focus/away) |
 | `/amux workspace` | Git workspace operations (sync, status) |
 
 ### Shortcuts
 
 ```bash
-/amux new project [name] [--repo current|<path>]
+/amux new project [name] [--repo current|<path>] [--vision <text>]
 /amux new agent [name] [--role <role>] [--workspace worktree|current|none] [--join]
 /amux new role [name]
 ```
 
-Missing fields are prompted interactively.
+Missing fields are prompted interactively. New project setup prompts for a project vision/context because it is the first alignment artifact for agents.
 
-### Context
+### Project Vision / Context
 
 ```bash
-/amux context           # Show current project context
-/amux context edit      # Open editor to edit CONTEXT.md
-/amux context set <t>   # Replace project context
-/amux context append <t>  # Append to project context
-/amux context clear     # Clear project context
-/amux context path      # Print CONTEXT.md file path
+/amux project                         # Show current project vision/context
+/amux project vision set <t>          # Replace project vision/context
+/amux project vision append <t>       # Append to project vision/context
+/amux project vision edit             # Open editor to edit CONTEXT.md
+/amux project vision clear            # Clear project vision/context
+/amux project vision path             # Print CONTEXT.md file path
 ```
 
-Project context is stored in `artifacts/project/CONTEXT.md` and auto-injected into agent prompts.
+Legacy aliases remain available:
+
+```bash
+/amux context [show|edit|set|append|clear|path]
+```
+
+Project vision/context is stored in `artifacts/project/CONTEXT.md` and auto-injected into agent prompts. Prefer `/amux project vision ...` or the `amux_project` tool over direct file edits.
 
 ### Task Workflow
 
@@ -188,7 +196,7 @@ Availability is auto-updated by task lifecycle: `pick` → working, `done`/`drop
   → Roles        new, delete
 ```
 
-## Tools (8)
+## Tools (9)
 
 | Tool | Actions | Purpose |
 |------|---------|---------|
@@ -197,6 +205,7 @@ Availability is auto-updated by task lifecycle: `pick` → working, `done`/`drop
 | `amux_send` | -- | Send message to an agent (exceptional, non-task communication) |
 | `amux_broadcast` | -- | Broadcast to all agents |
 | `amux_artifacts` | -- | List shared documents |
+| `amux_project` | show, set, append, clear, path | Manage project vision/context |
 | `amux_reserve` | claim, release, list | File/directory reservations |
 | `amux_task` | add, list, show, comment, assign, pick, done, drop, block, summary | Task backlog with comments, dependencies, batch assign |
 | `amux_journal` | add, list | Record decisions and learnings |

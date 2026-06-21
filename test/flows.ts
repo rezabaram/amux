@@ -85,6 +85,14 @@ import {
   getRecentEntries,
 } from "../core/journal.ts";
 import {
+  projectContextPath,
+  readProjectContext,
+  writeProjectContext,
+  appendProjectContext,
+  clearProjectContext,
+} from "../core/project-context.ts";
+
+import {
   appendTaskComment,
   readTaskComments,
   formatTaskComment,
@@ -1182,41 +1190,35 @@ describe("Project context (CONTEXT.md)", () => {
   after(() => cleanupSession(session));
 
   it("reads null when no context file exists", () => {
-    const ctxPath = sessionFile(session, "artifacts", "project", "CONTEXT.md");
+    const ctxPath = projectContextPath(session);
     assert.equal(existsSync(ctxPath), false);
+    assert.equal(readProjectContext(session), null);
   });
 
-  it("writes and reads context file", () => {
-    const dir = sessionFile(session, "artifacts", "project");
-    mkDir(dir, { recursive: true });
-    const ctxPath = join(dir, "CONTEXT.md");
+  it("writes and reads context file through core helpers", () => {
     const content = "This project builds a multi-agent coordination system.";
-    writeFileSync(ctxPath, content, "utf8");
+    const ctxPath = writeProjectContext(session, content);
 
-    const read = readF(ctxPath, "utf8");
-    assert.equal(read, content);
+    assert.equal(ctxPath, projectContextPath(session));
+    assert.equal(readProjectContext(session), content);
   });
 
   it("append preserves existing content", () => {
-    const ctxPath = sessionFile(session, "artifacts", "project", "CONTEXT.md");
-    const existing = readF(ctxPath, "utf8");
-    const addition = "\n\nFocus on test coverage this sprint.";
-    writeFileSync(ctxPath, existing + addition, "utf8");
+    appendProjectContext(session, "Focus on test coverage this sprint.");
 
-    const read = readF(ctxPath, "utf8");
+    const read = readProjectContext(session) || "";
     assert.ok(read.includes("multi-agent"));
     assert.ok(read.includes("test coverage"));
   });
 
   it("clear writes empty content", () => {
-    const ctxPath = sessionFile(session, "artifacts", "project", "CONTEXT.md");
-    writeFileSync(ctxPath, "", "utf8");
-    const read = readF(ctxPath, "utf8").trim();
-    assert.equal(read, "");
+    clearProjectContext(session);
+    assert.equal(readProjectContext(session), null);
+    assert.equal(readF(projectContextPath(session), "utf8").trim(), "");
   });
 
   it("context path is under session artifacts/project", () => {
-    const ctxPath = sessionFile(session, "artifacts", "project", "CONTEXT.md");
+    const ctxPath = projectContextPath(session);
     assert.ok(ctxPath.includes(session));
     assert.ok(ctxPath.endsWith("artifacts/project/CONTEXT.md"));
   });

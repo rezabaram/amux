@@ -13,6 +13,7 @@ export * from "./backlog";
 export * from "./reservations";
 export * from "./journal";
 export * from "./task-comments";
+export * from "./project-context";
 export * from "./renderers";
 export * from "./task-service";
 

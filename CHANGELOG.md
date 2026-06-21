@@ -11,11 +11,13 @@
 - **Assignment attention recovery**: assigned-work nudges now handle stale `working` availability when the assignee has no active in-progress item.
 - **Read-only CLI phase 1**: `amux progress`, `amux show`, `amux list`/`amux task list`, and `amux status` now use shared services/renderers.
 - **Project vision**: `VISION.md` now states amux's goal of efficient communication, high alignment, and synergistic multi-agent collaboration.
+- **First-class project vision/context interface**: `amux_project` and `/amux project vision ...` manage the prompt-injected project alignment artifact without direct file edits.
 
 ### Changed
 
 - Backlog guidance now treats initiatives/milestones as context containers and executable child items as assignable work.
 - Agents can be assigned future leaf work up front; dependencies and pick flow gate when work actually starts.
+- New project setup now guides users to set a project vision/context as the first alignment artifact.
 - Nested Pi package metadata is aligned with the root package and declares ESM mode.
 
 ## 1.1.0 (2026-06-20)

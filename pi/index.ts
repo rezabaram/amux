@@ -9,15 +9,14 @@
  *   session shutdown  -- agent goes offline (persists for later)
  *
  * Tools: amux_role, amux_list, amux_send, amux_broadcast,
- *         amux_reserve, amux_task, amux_journal
+ *         amux_reserve, amux_project, amux_task, amux_journal
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { FSWatcher } from "node:fs";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readdirSync, existsSync } from "node:fs";
 import {
   getSessionsDir,
   sessionDir,
@@ -91,6 +90,13 @@ import {
   readTaskComments,
   formatTaskComment,
 } from "../core/task-comments";
+import {
+  projectContextPath,
+  readProjectContext,
+  writeProjectContext,
+  appendProjectContext,
+  clearProjectContext,
+} from "../core/project-context";
 import {
   renderTaskListRow,
   renderTaskDetails,
@@ -415,7 +421,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     // Inject project context (CONTEXT.md)
-    const projectCtx = readContextFile(projectArtifactsDir());
+    const projectCtx = readProjectContext(mySession);
     if (projectCtx) {
       extra += `\n\n## Project Context\n${projectCtx}`;
     }
@@ -472,6 +478,10 @@ export default function (pi: ExtensionAPI) {
 ### Addressing
 - Same-session agents: use just the name (e.g., "backend") or full address ("${mySession}/backend")
 - Cross-session agents: always use the full address ("othersession/agentname")
+
+### Project setup and alignment
+- Use amux_project to set or update the project vision/context during setup; do not edit CONTEXT.md directly unless the interface is unavailable.
+- Project context is prompt-injected for future agents and should capture the goal, constraints, principles, and north star.
 
 ### Communication
 - Use amux_task for task workflow: add, assign, pick, show, comment, done/drop/block, and summary.
@@ -794,6 +804,82 @@ export default function (pi: ExtensionAPI) {
       return {
         content: [{ type: "text", text: sections.join("\n\n") }],
       };
+    },
+  });
+
+  // - amux_project ----------------------------------------------
+
+  pi.registerTool({
+    name: "amux_project",
+    label: "Project Vision/Context",
+    description:
+      "Manage the current project's vision/context alignment artifact. " +
+      "Actions: show, set, append, clear, path. Stored as artifacts/project/CONTEXT.md " +
+      "and injected into future agent prompts.",
+    promptSnippet: "Manage project vision/context (show, set, append, clear, path)",
+    promptGuidelines: [
+      "Use amux_project to set a project vision/context during setup before assigning work.",
+      "Prefer amux_project over directly editing CONTEXT.md; the file is an implementation detail.",
+      "Keep project context concise: goal, constraints, working principles, and north star.",
+    ],
+    parameters: Type.Object({
+      action: StringEnum(["show", "set", "append", "clear", "path"] as const),
+      content: Type.Optional(
+        Type.String({ description: "Project vision/context text (required for set and append)" })
+      ),
+    }),
+
+    async execute(_id, params) {
+      if (!mySession) throw new Error("amux session not active");
+
+      switch (params.action) {
+        case "show": {
+          const content = readProjectContext(mySession);
+          const path = projectContextPath(mySession);
+          if (!content) {
+            return {
+              content: [{ type: "text", text: "No project vision/context set. Use amux_project action=set to create one." }],
+              details: { path, content: null },
+            };
+          }
+          return {
+            content: [{ type: "text", text: `Project vision/context (${path}):\n\n${content}` }],
+            details: { path, content },
+          };
+        }
+        case "set": {
+          const text = params.content?.trim();
+          if (!text) throw new Error("content is required for action=set");
+          const path = writeProjectContext(mySession, text);
+          return {
+            content: [{ type: "text", text: "Project vision/context set. Changes affect future agent prompts." }],
+            details: { path, content: text },
+          };
+        }
+        case "append": {
+          const text = params.content?.trim();
+          if (!text) throw new Error("content is required for action=append");
+          const path = appendProjectContext(mySession, text);
+          const content = readProjectContext(mySession, 0);
+          return {
+            content: [{ type: "text", text: "Appended to project vision/context. Changes affect future agent prompts." }],
+            details: { path, content },
+          };
+        }
+        case "clear": {
+          const path = clearProjectContext(mySession);
+          return {
+            content: [{ type: "text", text: "Project vision/context cleared. Changes affect future agent prompts." }],
+            details: { path, content: "" },
+          };
+        }
+        case "path": {
+          const path = projectContextPath(mySession);
+          return { content: [{ type: "text", text: path }], details: { path } };
+        }
+        default:
+          throw new Error(`Unknown action: ${params.action}`);
+      }
     },
   });
 
@@ -1357,9 +1443,11 @@ export default function (pi: ExtensionAPI) {
           return handleNew(parts.slice(1), ctx);
         case "context":
           return handleContext(parts.slice(1), ctx);
+        case "project":
+          return handleProject(parts.slice(1), ctx);
         default:
           ctx.ui.notify(
-            `Unknown: /amux ${sub}\n\nAvailable:\n  /amux              Status\n  /amux join          Join a project as an agent\n  /amux leave         Leave current project\n  /amux progress      Project progress overview\n  /amux show <id>     Show backlog item details\n  /amux manage        Manage projects, agents, and roles\n  /amux new <type>    Create project, agent, or role directly\n  /amux context       Show/edit project context (CONTEXT.md)\n  /amux status set    Set your availability (idle/working/focus/away)\n  /amux workspace     Git workspace setup and sync`,
+            `Unknown: /amux ${sub}\n\nAvailable:\n  /amux              Status\n  /amux join          Join a project as an agent\n  /amux leave         Leave current project\n  /amux progress      Project progress overview\n  /amux show <id>     Show backlog item details\n  /amux manage        Manage projects, agents, and roles\n  /amux new <type>    Create project, agent, or role directly\n  /amux project       Manage project vision/context\n  /amux context       Show/edit project context (CONTEXT.md)\n  /amux status set    Set your availability (idle/working/focus/away)\n  /amux workspace     Git workspace setup and sync`,
             "warning"
           );
       }
@@ -1402,7 +1490,7 @@ export default function (pi: ExtensionAPI) {
     const availStr = me?.availability ? ` | ${me.availability}${me.statusMessage ? `: ${me.statusMessage}` : ""}` : "";
 
     ctx.ui.notify(
-      `Project: ${mySession} | Agent: ${myName} (${myRoleName || "no role"})${availStr}${taskLine}\n\nOnline:\n${agentLines.join("\n")}\n\n  /amux join          Switch project or agent\n  /amux leave         Leave project\n  /amux progress      Project progress overview\n  /amux show <id>     Show backlog item details\n  /amux manage        Manage projects, agents, and roles\n  /amux new <type>    Create project, agent, or role directly\n  /amux context       Show/edit project context\n  /amux status set    Set your availability\n  /amux workspace     Git workspace setup and sync`,
+      `Project: ${mySession} | Agent: ${myName} (${myRoleName || "no role"})${availStr}${taskLine}\n\nOnline:\n${agentLines.join("\n")}\n\n  /amux join          Switch project or agent\n  /amux leave         Leave project\n  /amux progress      Project progress overview\n  /amux show <id>     Show backlog item details\n  /amux manage        Manage projects, agents, and roles\n  /amux new <type>    Create project, agent, or role directly\n  /amux project       Manage project vision/context\n  /amux context       Show/edit project context\n  /amux status set    Set your availability\n  /amux workspace     Git workspace setup and sync`,
       "info"
     );
   }
@@ -2104,9 +2192,26 @@ export default function (pi: ExtensionAPI) {
     }
     await writeSessionConfig(name, config);
 
+    let visionSet = false;
+    const shouldSetVision = flags.vision !== undefined
+      ? true
+      : await ctx.ui.confirm("Project vision?", "Set the project vision/context now? This is the first alignment artifact for agents.");
+    if (shouldSetVision) {
+      const vision = typeof flags.vision === "string"
+        ? flags.vision
+        : await ctx.ui.editor("Project vision/context:", "# Project Context\n\n## Vision\n\n");
+      if (vision?.trim()) {
+        writeProjectContext(name, vision.trim());
+        visionSet = true;
+      }
+    }
+
     let msg = `Created project "${name}".`;
     if (setRepo) msg += `\nMain repo: ${config.mainRepo}`;
-    msg += `\n\nNext: /amux new agent <name> --role <role>  or  /amux manage`;
+    msg += visionSet
+      ? `\nProject vision/context set.`
+      : `\n\nNext alignment step: /amux project vision set <vision>`;
+    msg += `\nThen: /amux new agent <name> --role <role>  or  /amux manage`;
     ctx.ui.notify(msg, "info");
   }
 
@@ -2240,7 +2345,15 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.notify(`Role "${name}" added to "${session}".`, "info");
   }
 
-  // -- context command ------------------------------------------
+  // -- project/context commands --------------------------------
+
+  async function handleProject(args: string[], ctx: ExtensionContext): Promise<void> {
+    const sub = args[0] || "show";
+    if (sub === "vision" || sub === "context") {
+      return handleContext(args.slice(1), ctx);
+    }
+    return handleContext(args, ctx);
+  }
 
   async function handleContext(args: string[], ctx: ExtensionContext): Promise<void> {
     if (!mySession) {
@@ -2249,47 +2362,46 @@ export default function (pi: ExtensionAPI) {
     }
 
     ensureArtifactDirs();
-    const contextPath = join(projectArtifactsDir(), "CONTEXT.md");
+    const contextPath = projectContextPath(mySession);
     const sub = args[0] || "show";
 
     switch (sub) {
       case "show": {
-        const content = readContextFile(projectArtifactsDir());
+        const content = readProjectContext(mySession);
         if (!content) {
-          ctx.ui.notify(`No project context set.\n\nUse /amux context edit  or  /amux context set <text>`, "info");
+          ctx.ui.notify(`No project vision/context set.\n\nUse /amux project vision set <text>  or  /amux context set <text>`, "info");
         } else {
-          ctx.ui.notify(`Project context (${contextPath}):\n\n${content}`, "info");
+          ctx.ui.notify(`Project vision/context (${contextPath}):\n\n${content}`, "info");
         }
         break;
       }
       case "edit": {
-        const current = readContextFile(projectArtifactsDir()) || "";
-        const result = await ctx.ui.editor("Edit project context:", current);
+        const current = readProjectContext(mySession, 0) || "";
+        const result = await ctx.ui.editor("Edit project vision/context:", current);
         if (result === null || result === undefined) { ctx.ui.notify("Cancelled.", "info"); return; }
-        writeFileSync(contextPath, result, "utf8");
-        ctx.ui.notify("Project context updated. Changes affect future agent prompts.", "info");
+        writeProjectContext(mySession, result);
+        ctx.ui.notify("Project vision/context updated. Changes affect future agent prompts.", "info");
         break;
       }
       case "set": {
         const text = args.slice(1).join(" ").trim();
-        if (!text) { ctx.ui.notify("Usage: /amux context set <text>", "warning"); return; }
-        writeFileSync(contextPath, text, "utf8");
-        ctx.ui.notify("Project context set. Changes affect future agent prompts.", "info");
+        if (!text) { ctx.ui.notify("Usage: /amux project vision set <text>", "warning"); return; }
+        writeProjectContext(mySession, text);
+        ctx.ui.notify("Project vision/context set. Changes affect future agent prompts.", "info");
         break;
       }
       case "append": {
         const text = args.slice(1).join(" ").trim();
-        if (!text) { ctx.ui.notify("Usage: /amux context append <text>", "warning"); return; }
-        const current = readContextFile(projectArtifactsDir()) || "";
-        writeFileSync(contextPath, current + (current ? "\n\n" : "") + text, "utf8");
-        ctx.ui.notify("Appended to project context. Changes affect future agent prompts.", "info");
+        if (!text) { ctx.ui.notify("Usage: /amux project vision append <text>", "warning"); return; }
+        appendProjectContext(mySession, text);
+        ctx.ui.notify("Appended to project vision/context. Changes affect future agent prompts.", "info");
         break;
       }
       case "clear": {
-        const confirm = await ctx.ui.confirm("Clear context?", "Remove all project context? This affects future agent prompts.");
+        const confirm = await ctx.ui.confirm("Clear project vision/context?", "Remove all project context? This affects future agent prompts.");
         if (!confirm) { ctx.ui.notify("Cancelled.", "info"); return; }
-        writeFileSync(contextPath, "", "utf8");
-        ctx.ui.notify("Project context cleared.", "info");
+        clearProjectContext(mySession);
+        ctx.ui.notify("Project vision/context cleared.", "info");
         break;
       }
       case "path": {
@@ -2298,7 +2410,7 @@ export default function (pi: ExtensionAPI) {
       }
       default:
         ctx.ui.notify(
-          "Usage:\n  /amux context           Show current context\n  /amux context edit      Open editor\n  /amux context set <t>   Replace context\n  /amux context append <t>  Append to context\n  /amux context clear     Clear context\n  /amux context path      Show file path",
+          "Usage:\n  /amux project                         Show project vision/context\n  /amux project vision set <t>          Replace project vision/context\n  /amux project vision append <t>       Append to project vision/context\n  /amux project vision edit             Open editor\n  /amux project vision clear            Clear project vision/context\n  /amux project vision path             Show CONTEXT.md path\n\nLegacy alias:\n  /amux context [show|edit|set|append|clear|path]",
           "info"
         );
     }
@@ -2397,23 +2509,6 @@ export default function (pi: ExtensionAPI) {
       return readdirSync(dir).filter((f) => !f.startsWith("."));
     } catch {
       return [];
-    }
-  }
-
-  const MAX_CONTEXT_SIZE = 4096;
-
-  /** Read a CONTEXT.md file if it exists, with size guard. */
-  function readContextFile(dir: string): string | null {
-    const path = join(dir, "CONTEXT.md");
-    if (!existsSync(path)) return null;
-    try {
-      let content = readFileSync(path, "utf8").trim();
-      if (content.length > MAX_CONTEXT_SIZE) {
-        content = content.slice(0, MAX_CONTEXT_SIZE) + `\n\n[truncated  -- see full file at ${path}]`;
-      }
-      return content || null;
-    } catch {
-      return null;
     }
   }
 
