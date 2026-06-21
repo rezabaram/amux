@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { rmSync, existsSync, mkdtempSync, mkdirSync as mkDir, writeFileSync, readFileSync as readF } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
 
 import { sessionFile } from "../core/storage.ts";
 
@@ -2038,5 +2039,62 @@ describe("Task workflow service", () => {
     );
     const result = await serviceBlockTask(session, "TASK-02", devId, "Dev", "Waiting on API");
     assert.equal(result.task.status, "blocked");
+  });
+});
+describe("CLI read-only commands", () => {
+  const session = testSession("cli");
+  const cliPath = join(process.cwd(), "cli/index.ts");
+
+  function runCli(...args: string[]): string {
+    return execFileSync(process.execPath, ["--experimental-strip-types", cliPath, ...args], {
+      cwd: process.cwd(),
+      env: { ...process.env, AMUX_SESSIONS_DIR: TEST_ROOT },
+      encoding: "utf8",
+      stderr: "pipe",
+    });
+  }
+
+  it("prints honest read-only help", () => {
+    const out = runCli("--help");
+    assert.ok(out.includes("phase 1: read-only"));
+    assert.ok(out.includes("progress"));
+    assert.ok(out.includes("task list"));
+    assert.equal(out.includes("Manage tasks (add"), false);
+  });
+
+  it("renders progress, show, list, and task list using shared data", async () => {
+    const now = new Date().toISOString();
+    const item = await addTask(session, {
+      title: "CLI visible task", status: "todo",
+      createdBy: "Test", createdAt: now, updatedAt: now,
+    });
+
+    const progress = runCli("progress", "--session", session);
+    assert.ok(progress.includes(`Project: ${session}`));
+    assert.ok(progress.includes("CLI visible task"));
+
+    const show = runCli("--session", session, "show", item.id);
+    assert.ok(show.includes(`${item.id}: CLI visible task`));
+
+    const list = runCli("list", "-s", session);
+    assert.ok(list.includes("Backlog (1 item)"));
+    assert.ok(list.includes("CLI visible task"));
+
+    const taskList = runCli("task", "list", "--session=" + session);
+    assert.ok(taskList.includes("CLI visible task"));
+  });
+
+  it("renders status", async () => {
+    const agentId = newAgentId();
+    const now = new Date().toISOString();
+    await registerAgent(session, {
+      id: agentId, name: "CliAgent", session, role: "developer",
+      cwd: "/tmp", pid: 1, status: "online", availability: "idle",
+      registeredAt: now, lastHeartbeat: now,
+    });
+
+    const out = runCli("status", "--session", session);
+    assert.ok(out.includes("CliAgent"));
+    assert.ok(out.includes("online"));
   });
 });

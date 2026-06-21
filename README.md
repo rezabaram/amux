@@ -48,6 +48,19 @@ Import the core module directly in your project:
 import { createAgent, sendMessage, addTask } from "./amux/core/index.ts";
 ```
 
+### CLI (read-only, phase 1)
+
+```bash
+amux progress [--session <name>]     # Project progress overview
+amux show <ITEM-ID> [--session <name>]  # Item details + comments
+amux list [--session <name>]          # Backlog listing
+amux task list [--session <name>]     # Backlog listing (explicit namespace)
+amux status [--session <name>]        # Agent availability
+amux --help                           # Show available commands
+```
+
+Session is auto-detected if only one exists. The CLI uses shared core services and renderers. For full interactive workflows (create, assign, pick, manage), use the Pi extension.
+
 ## Quick Start (Pi)
 
 ```bash
