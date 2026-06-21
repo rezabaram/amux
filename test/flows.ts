@@ -53,6 +53,7 @@ import {
 } from "../core/messaging.ts";
 
 import {
+  type BacklogItem,
   readBacklog,
   addTask,
   getTask,
@@ -88,6 +89,12 @@ import {
   formatTaskComment,
   type TaskComment,
 } from "../core/task-comments.ts";
+import {
+  renderTaskListRow,
+  renderTaskDetails,
+  renderProgressSummary,
+  formatDuration,
+} from "../core/renderers.ts";
 
 // -- Test isolation --
 
@@ -1812,5 +1819,114 @@ describe("Auto-pick prefers assigned-to-self", () => {
 
     assert.ok(pick);
     assert.equal(pick!.title, "Open todo");
+  });
+});
+
+describe("Renderer functions", () => {
+  const now = new Date().toISOString();
+  const baseItem = (overrides: Partial<BacklogItem> = {}): BacklogItem => ({
+    id: "TASK-01", title: "Test task", status: "todo",
+    createdBy: "Test", createdAt: now, updatedAt: now,
+    ...overrides,
+  } as BacklogItem);
+
+  it("formatDuration handles various ranges", () => {
+    assert.equal(formatDuration(5000), "5s");
+    assert.equal(formatDuration(90000), "1m");
+    assert.equal(formatDuration(3600000), "1h");
+    assert.ok(formatDuration(90000000).includes("d") || formatDuration(90000000).includes("h"));
+  });
+
+  it("renderTaskListRow shows status and title", () => {
+    const row = renderTaskListRow(baseItem(), [], 1);
+    assert.ok(row.includes("TASK-01"));
+    assert.ok(row.includes("[todo]"));
+    assert.ok(row.includes("Test task"));
+  });
+
+  it("renderTaskListRow shows type label for non-task", () => {
+    const row = renderTaskListRow(baseItem({ itemType: "bug" }), [], 1);
+    assert.ok(row.includes("(bug)"));
+  });
+
+  it("renderTaskListRow shows spec marker", () => {
+    const row = renderTaskListRow(baseItem({ specPath: "tasks/TASK-01.md" }), [], 1);
+    assert.ok(row.includes("[spec]"));
+  });
+
+  it("renderTaskListRow shows assignee", () => {
+    const row = renderTaskListRow(baseItem({ status: "in-progress", assignee: "Alice" }), [], 1);
+    assert.ok(row.includes("Alice"));
+  });
+
+  it("renderTaskDetails includes all metadata", () => {
+    const task = baseItem({
+      description: "Build the thing",
+      assignee: "Alice", assigneeId: "a1",
+      files: ["src/auth.ts"],
+      status: "in-progress",
+    });
+    const text = renderTaskDetails(task, [task], { currentAgentId: "a1" });
+    assert.ok(text.includes("TASK-01"));
+    assert.ok(text.includes("Build the thing"));
+    assert.ok(text.includes("Alice"));
+    assert.ok(text.includes("(you)"));
+    assert.ok(text.includes("src/auth.ts"));
+  });
+
+  it("renderTaskDetails shows parent context", () => {
+    const parent = baseItem({ id: "INIT-01", title: "Auth system", itemType: "initiative" });
+    const child = baseItem({ id: "TASK-02", title: "Login", parentId: "INIT-01" });
+    const text = renderTaskDetails(child, [parent, child]);
+    assert.ok(text.includes("Parent: INIT-01: Auth system"));
+  });
+
+  it("renderTaskDetails shows comments", () => {
+    const comments: TaskComment[] = [{
+      timestamp: now, agent: "Alice", agentId: "a1",
+      type: "comment", text: "Looks good!",
+    }];
+    const text = renderTaskDetails(baseItem(), [], { comments });
+    assert.ok(text.includes("Comments (1)"));
+    assert.ok(text.includes("Looks good!"));
+  });
+
+  it("renderTaskDetails shows spec preview", () => {
+    const task = baseItem({ specPath: "tasks/TASK-01.md" });
+    const text = renderTaskDetails(task, [], { specPreview: "## Objective\nBuild auth" });
+    assert.ok(text.includes("Spec: tasks/TASK-01.md"));
+    assert.ok(text.includes("Build auth"));
+  });
+
+  it("renderProgressSummary handles empty backlog", () => {
+    const out = renderProgressSummary("test", []);
+    assert.ok(out.includes("No backlog items yet"));
+  });
+
+  it("renderProgressSummary shows flat backlog with markers", () => {
+    const tasks = [
+      baseItem({ id: "TASK-01", title: "Done", status: "done", completedAt: now }),
+      baseItem({ id: "TASK-02", title: "Active", status: "in-progress", assignee: "Alice" }),
+      baseItem({ id: "TASK-03", title: "Todo", status: "todo" }),
+    ];
+    const out = renderProgressSummary("test", tasks);
+    assert.ok(out.includes("1 todo"));
+    assert.ok(out.includes("1 in-progress"));
+    assert.ok(out.includes("1 done"));
+    assert.ok(out.includes("TASK-02"));
+    assert.ok(out.includes("Alice"));
+  });
+
+  it("renderProgressSummary shows hierarchical view", () => {
+    const tasks = [
+      baseItem({ id: "INIT-01", title: "Auth", itemType: "initiative" }),
+      baseItem({ id: "TASK-01", title: "Login", status: "done", parentId: "INIT-01", order: 1 }),
+      baseItem({ id: "TASK-02", title: "Signup", status: "todo", parentId: "INIT-01", order: 2 }),
+    ];
+    const out = renderProgressSummary("test", tasks);
+    assert.ok(out.includes("INIT-01"));
+    assert.ok(out.includes("[1/2]"));
+    assert.ok(out.includes("Login"));
+    assert.ok(out.includes("Signup"));
   });
 });

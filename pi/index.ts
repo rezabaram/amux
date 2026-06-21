@@ -96,6 +96,12 @@ import {
   readTaskComments,
   formatTaskComment,
 } from "../core/task-comments";
+import {
+  renderTaskListRow,
+  renderTaskDetails,
+  renderProgressSummary,
+  formatDuration,
+} from "../core/renderers";
 
 
 
@@ -1014,33 +1020,9 @@ export default function (pi: ExtensionAPI) {
             };
           }
 
-          const lines = filtered.map((t, i) => {
+          const lines = filtered.map((t) => {
             const pos = tasks.indexOf(t) + 1;
-            const assigneeStr = t.assignee
-              ? t.status === "assigned"
-                ? ` → ${t.assignee} (pending)`
-                : `  -- ${t.assignee}`
-              : "";
-            const isMe = t.assigneeId === myId;
-            const meMarker = isMe ? " (you)" : "";
-            const filesStr = t.files?.length ? `\n                              Files: ${t.files.join(", ")}` : "";
-            const depsStr = t.dependsOn?.length
-              ? (() => {
-                  const unmet = unmetDependencies(t, tasks);
-                  const label = t.dependsOn.join(", ");
-                  return `\n                              Depends on: ${label}${unmet.length > 0 ? " (waiting)" : " \u2713"}`;
-                })()
-              : "";
-            const blockedStr = t.status === "blocked" && t.blockedReason
-              ? `\n                              Blocked: ${t.blockedReason}` : "";
-            const summaryStr = t.status === "done" && t.summary
-              ? `\n                              Summary: ${t.summary}` : "";
-            const doneTime = t.status === "done" && t.completedAt
-              ? ` (${formatDuration(Date.now() - new Date(t.completedAt).getTime())} ago)` : "";
-            const typeLabel = t.itemType && t.itemType !== "task" ? `(${t.itemType}) ` : "";
-            const specMarker = t.specPath ? " [spec]" : "";
-
-            return `  #${String(pos).padStart(2)}  ${t.id}  ${typeLabel}[${t.status}]  ${t.title}${specMarker}${assigneeStr}${meMarker}${doneTime}${filesStr}${depsStr}${blockedStr}${summaryStr}`;
+            return renderTaskListRow(t, tasks, pos, myId);
           });
 
           return {
@@ -1686,39 +1668,12 @@ export default function (pi: ExtensionAPI) {
     const task = tasks.find((t) => t.id === id);
     if (!task) throw new Error(`Task ${id} not found.`);
 
-    let text = `${task.id}: ${task.title}  [${task.status}]`;
-    if (task.description) text += `\n\n${task.description}`;
-    text += `\n\nStatus: ${task.status}`;
-    if (task.itemType && task.itemType !== "task") text += `\nType: ${task.itemType}`;
-    if (task.parentId) {
-      const parent = tasks.find((t) => t.id === task.parentId);
-      text += `\nParent: ${task.parentId}${parent ? `: ${parent.title}` : ""}`;
-    }
-    if (task.order != null) text += `\nOrder: ${task.order}`;
-    if (task.assignee) text += `\nAssignee: ${task.assignee}${task.assigneeId === viewerId ? " (you)" : ""}`;
-    if (task.dependsOn?.length) {
-      const unmet = unmetDependencies(task, tasks);
-      text += `\nDepends on: ${task.dependsOn.join(", ")}${unmet.length > 0 ? ` (waiting: ${unmet.join(", ")})` : " ✓"}`;
-    }
-    if (task.files?.length) text += `\nFiles: ${task.files.join(", ")}`;
-    if (task.blockedReason) text += `\nBlocked: ${task.blockedReason}`;
-    if (task.summary) text += `\nSummary: ${task.summary}`;
-    text += `\nCreated: ${task.createdAt} by ${task.createdBy}`;
-    if (task.completedAt) text += `\nCompleted: ${task.completedAt}`;
-
-    if (task.specPath) {
-      text += `\nSpec: ${task.specPath}`;
-      const preview = readSpecPreview(session, task.specPath, 1024);
-      if (preview) text += `\n\n${preview}`;
-    }
-
     const comments = readTaskComments(session, task.id);
-    if (comments.length > 0) {
-      text += `\n\n── Comments (${comments.length}) ──`;
-      for (const c of comments) text += `\n${formatTaskComment(c)}`;
-    } else {
-      text += `\n\nNo comments yet. Use amux_task with action "comment" to add one.`;
-    }
+    const text = renderTaskDetails(task, tasks, {
+      currentAgentId: viewerId,
+      comments,
+      specPreview: task.specPath ? readSpecPreview(session, task.specPath, 1024) : null,
+    });
 
     return { text, task, comments };
   }
@@ -1736,89 +1691,7 @@ export default function (pi: ExtensionAPI) {
 
   async function buildProgressSummary(session: string): Promise<string> {
     const tasks = await readBacklog(session);
-    if (tasks.length === 0) return `Project: ${session}\n\nNo backlog items yet.`;
-
-    // Status counts
-    const counts: Record<string, number> = {};
-    for (const t of tasks) {
-      counts[t.status] = (counts[t.status] || 0) + 1;
-    }
-    const total = tasks.length;
-    const statusLine = ["todo", "assigned", "in-progress", "blocked", "done"]
-      .filter((s) => counts[s])
-      .map((s) => `${counts[s]} ${s}`)
-      .join(" \u00b7 ");
-
-    // Helpers
-    const marker = (t: Task) => {
-      switch (t.status) {
-        case "done": return "\u2713";
-        case "in-progress": return "\u25b6";
-        case "blocked": return "\u26a0";
-        case "assigned": return "\u2192";
-        default: return "\u25cb";
-      }
-    };
-    const typeLabel = (t: Task) => t.itemType && t.itemType !== "task" ? ` (${t.itemType})` : "";
-    const assigneeStr = (t: Task) =>
-      (t.status === "in-progress" || t.status === "assigned") && t.assignee ? ` \u2014 ${t.assignee}` : "";
-    const blockedStr = (t: Task) =>
-      t.status === "blocked" && t.blockedReason ? `: ${t.blockedReason}` : "";
-
-    // Build children lookup, sorted by order then backlog position
-    const childrenOf = new Map<string, Task[]>();
-    for (const t of tasks) {
-      if (t.parentId) {
-        const siblings = childrenOf.get(t.parentId) || [];
-        siblings.push(t);
-        childrenOf.set(t.parentId, siblings);
-      }
-    }
-    for (const [, children] of childrenOf) {
-      children.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
-    }
-
-    let out = `Project: ${session}\n`;
-    out += `${"\u2500".repeat(40)}\n`;
-    out += `${statusLine}  (${total} total)\n`;
-
-    // Render top-level items (those without parentId)
-    const topLevel = tasks.filter((t) => !t.parentId);
-    const hasHierarchy = childrenOf.size > 0;
-
-    if (hasHierarchy) out += "\n";
-
-    for (const t of topLevel) {
-      const children = childrenOf.get(t.id);
-      if (children && children.length > 0) {
-        // Parent with indented children
-        const childDone = children.filter((c) => c.status === "done").length;
-        out += `\u25b8 ${t.id}${typeLabel(t)}  ${t.title} [${childDone}/${children.length}]\n`;
-        for (const c of children) {
-          out += `    ${marker(c)} ${c.id}  ${c.title}${assigneeStr(c)}${blockedStr(c)}\n`;
-        }
-      } else {
-        // Standalone item
-        out += `${marker(t)} ${t.id}${typeLabel(t)}  ${t.title}${assigneeStr(t)}${blockedStr(t)}\n`;
-      }
-    }
-
-    // Recently done (last 3)
-    const done = tasks
-      .filter((t) => t.status === "done" && t.completedAt)
-      .sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || ""))
-      .slice(0, 3);
-    if (done.length > 0) {
-      out += `\n\u2713 Recently Done:\n`;
-      for (const t of done) {
-        const ago = t.completedAt
-          ? formatDuration(Date.now() - new Date(t.completedAt).getTime()) + " ago"
-          : "";
-        out += `  ${t.id}  ${t.title}${ago ? ` (${ago})` : ""}\n`;
-      }
-    }
-
-    return out.trimEnd();
+    return renderProgressSummary(session, tasks);
   }
 
   // -- join handler --
@@ -2730,20 +2603,6 @@ export default function (pi: ExtensionAPI) {
       }
     }
     return { positional, flags };
-  }
-
-  /** Format a duration in milliseconds to a human-readable string. */
-  function formatDuration(ms: number): string {
-    const seconds = Math.floor(ms / 1000);
-    if (seconds < 60) return `${seconds}s`;
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m`;
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    if (hours < 24) return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
-    const days = Math.floor(hours / 24);
-    const remainingHours = hours % 24;
-    return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
   }
 
   // -- Artifacts ------------------------------------------------
