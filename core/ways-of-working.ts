@@ -18,7 +18,7 @@ export const DEFAULT_WOW_PREVIEW_LIMIT = 4096;
 
 // ─── Paths ───────────────────────────────────────────────────
 
-export function projectArtifactsPath(session: string): string {
+function projectArtifactsPath(session: string): string {
   return sessionFile(session, "artifacts", "project");
 }
 
