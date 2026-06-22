@@ -497,7 +497,7 @@ export default function (pi: ExtensionAPI) {
       }
     }
 
-    // ── Section 6: Team / journal context ──
+    // ── Section 6: Team / project snapshot / journal context ──
     let teamContext = "";
     {
       const registry = await readRegistry(session);
@@ -527,6 +527,37 @@ export default function (pi: ExtensionAPI) {
           teamContext += `\nCross-session agents (must use full address "session/name"):\n${lines.join("\n")}`;
         }
         teamContext += `\n\n### Addressing\n- Same-session agents: use just the name (e.g., "backend") or full address ("${session}/backend")\n- Cross-session agents: always use the full address ("othersession/agentname")`;
+      }
+
+      const activeStatuses = ["todo", "assigned", "in-progress", "review", "blocked"];
+      const counts = new Map(activeStatuses.map((status) => [status, 0]));
+      for (const item of backlog) {
+        if (counts.has(item.status)) counts.set(item.status, (counts.get(item.status) || 0) + 1);
+      }
+      const openCount = activeStatuses.reduce((sum, status) => sum + (counts.get(status) || 0), 0);
+      const ready = backlog.filter((t) => t.status === "review").slice(0, 3);
+      const blocked = backlog.filter((t) => t.status === "blocked").slice(0, 3);
+      const reservations = await getReservations(session);
+      const reservationLines = Object.entries(reservations).slice(0, 5).map(([path, r]) => {
+        const reason = r.reason ? ` (${r.reason.length > 70 ? `${r.reason.slice(0, 67)}…` : r.reason})` : "";
+        return `- ${path}: ${r.agent}, ${formatReservationAge(r.since)}${reason}`;
+      });
+
+      if (openCount > 0 || reservationLines.length > 0) {
+        const countStr = activeStatuses
+          .map((status) => `${status} ${counts.get(status) || 0}`)
+          .join(", ");
+        let snapshot = `## Project Snapshot\nOpen work: ${openCount} (${countStr})`;
+        if (ready.length > 0) {
+          snapshot += `\nReady for review: ${ready.map((t) => `${t.id}: ${t.title}${t.assignee ? ` — ${t.assignee}` : ""}`).join("; ")}`;
+        }
+        if (blocked.length > 0) {
+          snapshot += `\nBlocked: ${blocked.map((t) => `${t.id}: ${t.title}${t.blockedReason ? ` (${t.blockedReason})` : ""}`).join("; ")}`;
+        }
+        if (reservationLines.length > 0) {
+          snapshot += `\nActive reservations:\n${reservationLines.join("\n")}`;
+        }
+        teamContext += `${teamContext ? "\n\n" : ""}${snapshot}`;
       }
 
       const recentJournal = getRecentEntries(session);

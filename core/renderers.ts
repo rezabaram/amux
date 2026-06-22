@@ -77,13 +77,18 @@ export function agentWorkState(agentId: string, tasks: BacklogItem[]): AgentWork
   };
 }
 
-/** Render a compact work-state label such as "working: TASK-32". */
+function compactTaskRef(task: BacklogItem): string {
+  const title = task.title.length > 48 ? `${task.title.slice(0, 45)}…` : task.title;
+  return `${task.id}: ${title}`;
+}
+
+/** Render a compact work-state label such as "working: TASK-32: Fix auth". */
 export function renderAgentWorkState(agentId: string, tasks: BacklogItem[]): string | null {
   const state = agentWorkState(agentId, tasks);
-  if (state.active) return `working: ${state.active.id}`;
-  if (state.review.length === 1) return `ready for review: ${state.review[0]!.id}`;
+  if (state.active) return `working: ${compactTaskRef(state.active)}`;
+  if (state.review.length === 1) return `ready for review: ${compactTaskRef(state.review[0]!)}`;
   if (state.review.length > 1) return `ready for review: ${state.review.length} tasks`;
-  if (state.assigned.length === 1) return `assigned: ${state.assigned[0]!.id}`;
+  if (state.assigned.length === 1) return `assigned: ${compactTaskRef(state.assigned[0]!)}`;
   if (state.assigned.length > 1) return `assigned: ${state.assigned.length} tasks`;
   return null;
 }

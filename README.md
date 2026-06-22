@@ -155,7 +155,7 @@ Ways of Working is stored in `artifacts/project/WOW.md` and auto-injected into a
 /amux prompt all                  # Explicitly show the full amux-appended block
 ```
 
-amux **appends** a coordination block to Pi's base system prompt — it never replaces the base prompt. `/amux prompt` is a debug surface for understanding what each agent actually sees. By default it shows a compact section summary to avoid dumping the whole prompt; inspect a single section by name or use `/amux prompt all` when you explicitly want the full amux-appended block. Pi's base system prompt is **not** shown (amux never sees or owns it). The preview uses the same gathering path that injects the live prompt, so it never drifts from what agents receive.
+amux **appends** a coordination block to Pi's base system prompt — it never replaces the base prompt. `/amux prompt` is a debug surface for understanding what each agent actually sees. By default it shows a compact section summary to avoid dumping the whole prompt; inspect a single section by name (for example `teamContext`) or use `/amux prompt all` when you explicitly want the full amux-appended block. Pi's base system prompt is **not** shown (amux never sees or owns it). The preview uses the same gathering path that injects the live prompt, so it never drifts from what agents receive.
 
 ### Task Workflow
 
@@ -314,7 +314,7 @@ amux **appends** a composed coordination block to Pi's base system prompt (it ne
 3. Role profile (role-specific only)
 4. Agent identity + workspace
 5. Current work state (active/assigned/review items, spec preview, recent comments)
-6. Team/backlog/reservation context
+6. Team/project snapshot/reservation context
 7. Interface/tool guidance and shared artifact paths
 
 Role profiles supply only the role-specific section; common principles, vision, work state, and interface guidance are separate, deliberately-ordered sections.

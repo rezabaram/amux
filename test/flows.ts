@@ -1929,7 +1929,7 @@ describe("Renderer functions", () => {
       baseItem({ id: "TASK-01", status: "assigned", assigneeId: "a1" }),
       baseItem({ id: "TASK-02", status: "in-progress", assigneeId: "a1" }),
     ];
-    assert.equal(renderAgentWorkState("a1", tasks), "working: TASK-02");
+    assert.equal(renderAgentWorkState("a1", tasks), "working: TASK-02: Test task");
     assert.equal(renderAgentWorkState("missing", tasks), null);
   });
 
@@ -1941,7 +1941,7 @@ describe("Renderer functions", () => {
       { currentAgentId: "a1", includeCwd: true },
     );
     assert.ok(row.includes("Alice (you)"));
-    assert.ok(row.includes("working: TASK-02"));
+    assert.ok(row.includes("working: TASK-02: Test task"));
     assert.ok(row.includes("developer"));
     assert.ok(row.includes("/repo"));
   });
@@ -1952,7 +1952,7 @@ describe("Renderer functions", () => {
       { id: "a1", name: "Alice", roleName: "developer", status: "online", availability: "idle" },
       tasks,
     );
-    assert.ok(row.includes("assigned: TASK-03"));
+    assert.ok(row.includes("assigned: TASK-03: Test task"));
   });
 
   it("renderTaskDetails includes all metadata", () => {
