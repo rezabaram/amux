@@ -121,7 +121,7 @@ All commands are subcommands of `/amux`:
 /amux new role [name]
 ```
 
-Missing fields are prompted interactively. New project setup prompts for a project vision/context because it is the first alignment artifact for agents.
+Missing fields are prompted interactively. New projects get a small default `WOW.md` and prompt for project vision/context because those are the first alignment artifacts for agents.
 
 ### Project Vision / Context
 
@@ -147,7 +147,7 @@ Project vision/context is stored in `artifacts/project/CONTEXT.md` and auto-inje
 /amux wow path                    # Print WOW.md file path
 ```
 
-Ways of Working is stored in `artifacts/project/WOW.md` and auto-injected into agent prompts after the built-in common principles. Use it for project-specific collaboration norms: planning depth, review policy, definition of done, communication defaults, escalation, and retro habits. Keep it concise because it appears in every agent's prompt. Agents can also use the `amux_wow` tool.
+Ways of Working is stored in `artifacts/project/WOW.md` and auto-injected into agent prompts after the built-in common principles. New projects start with a small default WoW covering task comments, review, waiting/reminders, and learnings. Edit it for project-specific collaboration norms. Keep it concise because it appears in every agent's prompt. Agents can also use the `amux_wow` tool.
 
 ### Prompt preview
 

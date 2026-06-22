@@ -4,6 +4,7 @@
 
 ### Added
 
+- New projects now get a small default `WOW.md` with sensible team norms for comments, review, waiting/reminders, and learnings.
 - Task comments now notify relevant task subscribers by default, so assignees/participants wake and reassess task state without a separate `amux_send`.
 
 ### Removed

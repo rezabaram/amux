@@ -56,6 +56,8 @@ import {
   writeWaysOfWorking,
   appendWaysOfWorking,
   clearWaysOfWorking,
+  ensureDefaultWaysOfWorking,
+  DEFAULT_WAYS_OF_WORKING,
   wowPath,
 } from "../core/ways-of-working.ts";
 import {
@@ -2521,6 +2523,20 @@ describe("Ways of Working (WOW.md)", () => {
 
   it("returns null when WOW.md does not exist", () => {
     assert.equal(readWaysOfWorking(session), null);
+  });
+
+  it("creates a sensible default WoW when requested", () => {
+    const defaultSession = testSession("wow-default");
+    try {
+      const path = ensureDefaultWaysOfWorking(defaultSession);
+      assert.equal(path, wowPath(defaultSession));
+      const content = readWaysOfWorking(defaultSession);
+      assert.equal(content, DEFAULT_WAYS_OF_WORKING);
+      assert.ok(content!.includes("task comments"));
+      assert.ok(content!.includes("Do not run periodic wake loops"));
+    } finally {
+      cleanupSession(defaultSession);
+    }
   });
 
   it("writes and reads WoW content", () => {

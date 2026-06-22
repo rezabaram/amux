@@ -127,6 +127,7 @@ import {
   writeWaysOfWorking,
   appendWaysOfWorking,
   clearWaysOfWorking,
+  ensureDefaultWaysOfWorking,
   wowPath,
 } from "../core/ways-of-working";
 import {
@@ -2114,6 +2115,7 @@ Read and write shared documents using the standard read/write/edit tools.
       config.mainRepo = (typeof flags.repo === "string" && flags.repo !== "current") ? flags.repo : ctx.cwd;
     }
     await writeSessionConfig(name, config);
+    ensureDefaultWaysOfWorking(name);
 
     let visionSet = false;
     const shouldSetVision = flags.vision !== undefined
@@ -2131,6 +2133,7 @@ Read and write shared documents using the standard read/write/edit tools.
 
     let msg = `Created project "${name}".`;
     if (setRepo) msg += `\nMain repo: ${config.mainRepo}`;
+    msg += `\nDefault Ways of Working created.`;
     msg += visionSet
       ? `\nProject vision/context set.`
       : `\n\nNext alignment step: /amux project vision set <vision>`;
