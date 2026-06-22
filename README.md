@@ -174,9 +174,10 @@ amux_task({ action: "comment", id: "TASK-01", content: "Looks good, one suggesti
 # Compact project progress overview
 /amux progress
 amux_task({ action: "summary" })
+amux_task({ action: "archive" })   # Move done items out of the active backlog
 ```
 
-Lifecycle events (assign, pick, review, done, drop, block) are automatically recorded as activity in `task-comments/<ITEM-ID>.jsonl`. Task comments are durable and notify relevant subscribers by default (assignee, creator, previous commenters, and `@AgentName` mentions); pass `notify: false` or `silent: true` for a quiet note. Use `review` when implementation is ready for review/integration; use `done` when work is reviewed, integrated, and verified. Simple workflows can still mark work done directly. Use `amux_send` only for exceptional non-task communication; delivered messages show intent and age so stale context is visible.
+Lifecycle events (assign, pick, review, done, drop, block) are automatically recorded as activity in `task-comments/<ITEM-ID>.jsonl`. Task comments are durable and notify relevant subscribers by default (assignee, creator, previous commenters, and `@AgentName` mentions); pass `notify: false` or `silent: true` for a quiet note. Use `review` when implementation is ready for review/integration; use `done` when work is reviewed, integrated, and verified. Use `archive` to move done items that are no longer needed for ongoing implementation out of the active backlog. Simple workflows can still mark work done directly. Use `amux_send` only for exceptional non-task communication; delivered messages show intent and age so stale context is visible.
 
 For token-efficient review handoff, include a compact free-form summary when marking work ready for review:
 
@@ -238,7 +239,7 @@ Availability is auto-updated by task lifecycle: `pick` → working, `done`/`drop
 | `amux_project` | show, set, append, clear, path | Manage project vision/context |
 | `amux_wow` | show, set, append, clear, path | Manage project/team Ways of Working |
 | `amux_reserve` | claim, release, list | File/directory reservations |
-| `amux_task` | add, list, show, comment, assign, pick, review, done, drop, block, summary | Task backlog with comments, dependencies, batch assign |
+| `amux_task` | add, list, show, comment, assign, pick, review, done, drop, block, archive, summary | Task backlog with comments, dependencies, batch assign, archive done items |
 | `amux_journal` | add, list | Record decisions and learnings |
 
 ## Built-in Roles
@@ -294,7 +295,8 @@ amux is built for a lead agent (e.g. the `lead-architect` role) to turn high-lev
 6. **Monitor** — `amux_task summary` / `/amux progress`, reservations, review status.
 7. **Require review** — substantive work goes to `review` before `done`.
 8. **Integrate** — verify and merge the final changes.
-9. **Report** — give the user a clear outcome: what shipped, files/commits, tests, decisions, risks, next steps.
+9. **Archive** — move done items no longer needed for ongoing implementation out of the active backlog.
+10. **Report** — give the user a clear outcome: what shipped, files/commits, tests, decisions, risks, next steps.
 
 This workflow is guidance, not magic automation — the lead agent orchestrates through the existing primitives (`amux_task`, `amux_project`, reservations, journal). There is no auto-decomposition action; decomposition is the lead's judgment and stays reviewable.
 

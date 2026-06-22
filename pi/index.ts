@@ -100,6 +100,7 @@ import {
   getTask,
   readSpecPreview,
   planTaskSpec,
+  archiveDoneTasks,
 } from "../core/backlog";
 import {
   appendEntry as addJournalEntry,
@@ -1235,10 +1236,10 @@ Read and write shared documents using the standard read/write/edit tools.
       "show (task details + comments/spec preview), comment (add task-scoped comment), " +
       "plan/edit-plan (manage task-linked specs), " +
       "assign (delegate to same-session agent, comma-separated IDs for batch), pick (claim/accept task), " +
-      "review (mark implementation ready for review), done (complete), drop (release back to queue), block (mark blocked). " +
+      "review (mark implementation ready for review), done (complete), drop (release back to queue), block (mark blocked), archive (archive completed items). " +
       "Tasks can declare dependencies via dependsOn. " +
       "Picking a task auto-reserves its files. Done/drop auto-releases them.",
-    promptSnippet: "Manage task backlog  -- add, list, show, comment, plan, edit-plan, assign, pick, review, done, drop, block",
+    promptSnippet: "Manage task backlog  -- add, list, show, comment, plan, edit-plan, assign, pick, review, done, drop, block, archive",
     promptGuidelines: [
       "Use action 'pick' to claim the next available task or accept an assigned task.",
       "Picking a task auto-reserves its files. Done/drop auto-releases them.",
@@ -1254,9 +1255,10 @@ Read and write shared documents using the standard read/write/edit tools.
       "Use 'show' to view item details, parent context, linked spec preview, and comment history.",
       "Use 'plan' and 'edit-plan' for first-class task-linked specs/checklists instead of ad-hoc project artifacts.",
       "Use 'comment' for task-scoped discussion  -- prefer over amux_send for task-related topics. Comments notify relevant task subscribers by default; set notify:false or silent:true for quiet notes.",
+      "Use 'archive' to move done items that are no longer needed for ongoing implementation out of the active backlog.",
     ],
     parameters: Type.Object({
-      action: StringEnum(["add", "list", "show", "comment", "plan", "edit-plan", "assign", "pick", "review", "done", "drop", "block", "summary"] as const),
+      action: StringEnum(["add", "list", "show", "comment", "plan", "edit-plan", "assign", "pick", "review", "done", "drop", "block", "archive", "summary"] as const),
       // add
       title: Type.Optional(Type.String({ description: "Task title (required for add)" })),
       description: Type.Optional(Type.String({ description: "Task description or acceptance criteria" })),
@@ -1452,6 +1454,22 @@ Read and write shared documents using the standard read/write/edit tools.
           return {
             content: [{ type: "text", text: summary }],
             details: {},
+          };
+        }
+
+        // -- archive ------------------------------------------
+        case "archive": {
+          const result = await archiveDoneTasks(mySession);
+          const archivedIds = result.archived.map((t) => t.id).join(", ") || "none";
+          const skippedText = result.skipped.length > 0
+            ? `\nSkipped ${result.skipped.length}: ${result.skipped.map((s) => `${s.item.id} (${s.reason})`).join(", ")}`
+            : "";
+          return {
+            content: [{
+              type: "text",
+              text: `Archived ${result.archived.length} done item(s): ${archivedIds}.${skippedText}\nArchive: ${result.archivePath}`,
+            }],
+            details: result,
           };
         }
 

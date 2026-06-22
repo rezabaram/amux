@@ -14,6 +14,8 @@ import {
   readJson,
   atomicWriteJson,
   withJsonFile,
+  appendJsonlSync,
+  readJsonlSync,
 } from "./storage.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -45,10 +47,23 @@ export type Task = BacklogItem;
 
 export type Backlog = BacklogItem[];
 
+export interface ArchivedBacklogItem {
+  archivedAt: string;
+  item: BacklogItem;
+}
+
 // ─── Paths ───────────────────────────────────────────────────
 
 function backlogPath(session: string): string {
   return sessionFile(session, "backlog.json");
+}
+
+export function backlogArchivePath(session: string): string {
+  return sessionFile(session, "archive", "backlog-archive.jsonl");
+}
+
+export function readArchivedBacklog(session: string): ArchivedBacklogItem[] {
+  return readJsonlSync<ArchivedBacklogItem>(backlogArchivePath(session));
 }
 
 // ─── Backlog Operations ─────────────────────────────────────
@@ -102,8 +117,9 @@ export async function addTask(
   urgent?: boolean
 ): Promise<Task> {
   let task!: Task;
+  const archivedItems = readArchivedBacklog(session).map((entry) => entry.item);
   await withJsonFile<Backlog>(backlogPath(session), [], (tasks) => {
-    const id = nextTaskId(tasks, taskData.itemType);
+    const id = nextTaskId([...tasks, ...archivedItems], taskData.itemType);
     task = { id, ...taskData };
     if (urgent) {
       tasks.unshift(task);
@@ -154,6 +170,65 @@ export async function updateTask(
     return tasks;
   });
   return found;
+}
+
+export interface ArchiveDoneTasksResult {
+  archived: BacklogItem[];
+  skipped: Array<{ item: BacklogItem; reason: string }>;
+  archivePath: string;
+}
+
+/**
+ * Move done items that are no longer needed for active coordination out of
+ * backlog.json and into archive/backlog-archive.jsonl.
+ *
+ * Safety: keep done items if any not-done item depends on them or is their
+ * child, because those items still provide context for ongoing work.
+ */
+export async function archiveDoneTasks(session: string): Promise<ArchiveDoneTasksResult> {
+  const archivePath = backlogArchivePath(session);
+  const archived: BacklogItem[] = [];
+  const skipped: Array<{ item: BacklogItem; reason: string }> = [];
+  const archivedAt = new Date().toISOString();
+
+  await withJsonFile<Backlog>(backlogPath(session), [], (tasks) => {
+    const active = tasks.filter((t) => t.status !== "done");
+    const activeIds = new Set(active.map((t) => t.id));
+    const activeDependencyIds = new Set(active.flatMap((t) => t.dependsOn || []));
+    const activeParentIds = new Set(active.map((t) => t.parentId).filter((id): id is string => !!id));
+    const remaining: BacklogItem[] = [];
+
+    for (const item of tasks) {
+      if (item.status !== "done") {
+        remaining.push(item);
+        continue;
+      }
+      if (activeDependencyIds.has(item.id)) {
+        skipped.push({ item, reason: "active task depends on it" });
+        remaining.push(item);
+        continue;
+      }
+      if (activeParentIds.has(item.id)) {
+        skipped.push({ item, reason: "active child item still references it" });
+        remaining.push(item);
+        continue;
+      }
+      if (item.parentId && activeIds.has(item.parentId)) {
+        skipped.push({ item, reason: "active parent item still references it" });
+        remaining.push(item);
+        continue;
+      }
+      archived.push(item);
+    }
+
+    return remaining;
+  });
+
+  for (const item of archived) {
+    appendJsonlSync(archivePath, { archivedAt, item } satisfies ArchivedBacklogItem);
+  }
+
+  return { archived, skipped, archivePath };
 }
 
 // ─── Spec / Plan Helpers ──────────────────────────────────

@@ -96,6 +96,9 @@ import {
   defaultSpecTemplate,
   readSpecPreview,
   planTaskSpec,
+  archiveDoneTasks,
+  backlogArchivePath,
+  readArchivedBacklog,
 } from "../core/backlog.ts";
 
 import {
@@ -358,6 +361,53 @@ describe("Task backlog", () => {
     const task = await getTask(session, "TASK-01");
     assert.equal(task!.status, "done");
     assert.equal(task!.summary, "Done!");
+  });
+});
+
+describe("Backlog archive", () => {
+  const session = testSession("archive");
+  after(() => cleanupSession(session));
+
+  it("moves done items to archive and keeps done dependencies needed by active work", async () => {
+    const now = new Date().toISOString();
+    const doneFree = await addTask(session, { title: "Done free", status: "todo", createdBy: "Test", createdAt: now, updatedAt: now });
+    const doneDep = await addTask(session, { title: "Done dep", status: "todo", createdBy: "Test", createdAt: now, updatedAt: now });
+    await updateTask(session, doneFree.id, { status: "done", completedAt: now });
+    await updateTask(session, doneDep.id, { status: "done", completedAt: now });
+    const active = await addTask(session, { title: "Active", status: "todo", dependsOn: [doneDep.id], createdBy: "Test", createdAt: now, updatedAt: now });
+    const parent = await addTask(session, { title: "Active parent", status: "todo", createdBy: "Test", createdAt: now, updatedAt: now });
+    const doneChild = await addTask(session, { title: "Done child", status: "todo", parentId: parent.id, createdBy: "Test", createdAt: now, updatedAt: now });
+    await updateTask(session, doneChild.id, { status: "done", completedAt: now });
+
+    const result = await archiveDoneTasks(session);
+    assert.deepEqual(result.archived.map((t) => t.id), [doneFree.id]);
+    assert.deepEqual(result.skipped.map((s) => [s.item.id, s.reason]), [
+      [doneDep.id, "active task depends on it"],
+      [doneChild.id, "active parent item still references it"],
+    ]);
+
+    const remaining = await readBacklog(session);
+    assert.deepEqual(remaining.map((t) => t.id), [doneDep.id, active.id, parent.id, doneChild.id]);
+    const archivedLines = readF(backlogArchivePath(session), "utf8").trim().split("\n");
+    assert.equal(archivedLines.length, 1);
+    const archived = JSON.parse(archivedLines[0]!);
+    assert.equal(archived.item.id, doneFree.id);
+    assert.ok(archived.archivedAt);
+    assert.equal(readArchivedBacklog(session)[0]!.item.id, doneFree.id);
+  });
+
+  it("does not reuse archived IDs", async () => {
+    const idSession = testSession("archive-ids");
+    try {
+      const now = new Date().toISOString();
+      const done = await addTask(idSession, { title: "Done", status: "todo", createdBy: "Test", createdAt: now, updatedAt: now });
+      await updateTask(idSession, done.id, { status: "done", completedAt: now });
+      await archiveDoneTasks(idSession);
+      const added = await addTask(idSession, { title: "After archive", status: "todo", createdBy: "Test", createdAt: now, updatedAt: now });
+      assert.equal(added.id, "TASK-02");
+    } finally {
+      cleanupSession(idSession);
+    }
   });
 });
 
