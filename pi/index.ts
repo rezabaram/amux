@@ -40,6 +40,7 @@ import {
   getOnlineAgents,
   getOfflineAgents,
   isEffectivelyOnline,
+  shouldSignalAgent,
   HEARTBEAT_INTERVAL_MS,
   resolveAgent,
   parseAddress,
@@ -110,6 +111,9 @@ import {
   appendTaskComment,
   readTaskComments,
   formatTaskComment,
+  resolveTaskCommentSubscribers,
+  taskCommentPreview,
+  type TaskComment,
 } from "../core/task-comments";
 import {
   projectContextPath,
@@ -1248,7 +1252,7 @@ Read and write shared documents using the standard read/write/edit tools.
       "Only the assignee can review/drop/block an assigned item; review items can be completed by a reviewer.",
       "Use 'show' to view item details, parent context, linked spec preview, and comment history.",
       "Use 'plan' and 'edit-plan' for first-class task-linked specs/checklists instead of ad-hoc project artifacts.",
-      "Use 'comment' for task-scoped discussion  -- prefer over amux_send for task-related topics.",
+      "Use 'comment' for task-scoped discussion  -- prefer over amux_send for task-related topics. Comments notify relevant task subscribers by default; set notify:false or silent:true for quiet notes.",
     ],
     parameters: Type.Object({
       action: StringEnum(["add", "list", "show", "comment", "plan", "edit-plan", "assign", "pick", "review", "done", "drop", "block", "summary"] as const),
@@ -1271,6 +1275,8 @@ Read and write shared documents using the standard read/write/edit tools.
       reason: Type.Optional(Type.String({ description: "Reason for blocking, or approach note for pick" })),
       summary: Type.Optional(Type.String({ description: "Summary for review or done. For review, include commit/branch, diff summary, tests run, and known risks." })),
       content: Type.Optional(Type.String({ description: "Comment text (for comment), or markdown spec content (for plan)" })),
+      notify: Type.Optional(Type.Boolean({ description: "For comment: notify task subscribers (default true). Set false for silent comments." })),
+      silent: Type.Optional(Type.Boolean({ description: "For comment: if true, do not notify task subscribers." })),
       // list
       status: Type.Optional(Type.String({ description: "Filter by status: todo, assigned, in-progress, review, done, blocked" })),
     }),
@@ -1375,17 +1381,28 @@ Read and write shared documents using the standard read/write/edit tools.
           const task = await getTask(mySession, params.id);
           if (!task) throw new Error(`Task ${params.id} not found.`);
 
-          appendTaskComment(mySession, params.id, {
+          const previousComments = readTaskComments(mySession, params.id);
+          const comment = {
+            id: newMessageId(),
             timestamp: new Date().toISOString(),
             agent: myName,
             agentId: myId,
-            type: "comment",
+            type: "comment" as const,
             text: params.content,
-          });
+          };
+          appendTaskComment(mySession, params.id, comment);
+
+          const shouldNotify = params.silent === true ? false : params.notify !== false;
+          const notified = shouldNotify
+            ? await notifyTaskCommentSubscribers(mySession, task, previousComments, comment)
+            : [];
+          const notifyText = shouldNotify
+            ? notified.length > 0 ? ` Notified: ${notified.join(", ")}.` : " No subscribers notified."
+            : " Notifications skipped.";
 
           return {
-            content: [{ type: "text", text: `Comment added to ${params.id}.` }],
-            details: { taskId: params.id },
+            content: [{ type: "text", text: `Comment added to ${params.id}.${notifyText}` }],
+            details: { taskId: params.id, commentId: comment.id, notified },
           };
         }
 
@@ -1775,7 +1792,7 @@ Read and write shared documents using the standard read/write/edit tools.
     session: string,
     id: string,
     viewerId?: string,
-  ): Promise<{ text: string; task: Task; comments: ReturnType<typeof readTaskComments> }> {
+  ): Promise<{ text: string; task: BacklogItem; comments: ReturnType<typeof readTaskComments> }> {
     const tasks = await readBacklog(session);
     const task = tasks.find((t) => t.id === id);
     if (!task) throw new Error(`Task ${id} not found.`);
@@ -1788,6 +1805,46 @@ Read and write shared documents using the standard read/write/edit tools.
     });
 
     return { text, task, comments };
+  }
+
+  async function notifyTaskCommentSubscribers(
+    session: string,
+    task: BacklogItem,
+    previousComments: TaskComment[],
+    comment: TaskComment,
+  ): Promise<string[]> {
+    if (!myId || !myName) return [];
+
+    const registry = await readRegistry(session);
+    const agents = Object.values(registry);
+    const recipients = resolveTaskCommentSubscribers(task, previousComments, agents, myId, comment.text);
+    const preview = taskCommentPreview(comment.text);
+    const notified: string[] = [];
+
+    for (const recipient of recipients) {
+      const requiresAttention = true;
+      if (shouldSignalAgent(recipient)) {
+        await updateAgent(session, recipient.id, { attentionPending: true });
+      }
+      sendToInbox(session, recipient.id, {
+        id: newMessageId(),
+        from: myId,
+        fromName: myName,
+        fromRole: myRoleName,
+        fromSession: session,
+        timestamp: comment.timestamp,
+        message: `${task.id} has a new comment from ${myName}: “${preview}”\nRun amux_task show ${task.id} for full context.`,
+        category: "task-comment",
+        taskId: task.id,
+        notificationType: "task-comment",
+        commentId: comment.id,
+        preview,
+        requiresAttention,
+      });
+      notified.push(recipient.name);
+    }
+
+    return notified;
   }
 
   // -- progress handler --

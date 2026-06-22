@@ -127,6 +127,9 @@ import {
   appendTaskComment,
   readTaskComments,
   formatTaskComment,
+  resolveTaskCommentSubscribers,
+  taskCommentMentions,
+  taskCommentPreview,
   type TaskComment,
 } from "../core/task-comments.ts";
 import {
@@ -1386,6 +1389,30 @@ describe("Task-scoped comments", () => {
     const t = await getTask(session, task.id);
     assert.equal(t!.title, "Test comment isolation");
     assert.equal((t as any).comments, undefined);
+  });
+
+  it("builds compact previews and extracts mentions", () => {
+    assert.equal(taskCommentPreview("Confirmed\nproceed\tnow"), "Confirmed proceed now");
+    assert.equal(taskCommentPreview("x".repeat(12), 8), "xxxxxxx…");
+    assert.deepEqual(taskCommentMentions("cc @Dev_1 and @Reviewer-2"), ["Dev_1", "Reviewer-2"]);
+  });
+
+  it("resolves task comment subscribers from assignee, creator, commenters, and mentions", () => {
+    const now = new Date().toISOString();
+    const agents: AgentInfo[] = [
+      { id: "lead", name: "Lead", session, role: "lead", cwd: "/tmp", pid: 1, status: "online", registeredAt: now, lastHeartbeat: now },
+      { id: "dev", name: "Developer", session, role: "dev", cwd: "/tmp", pid: 2, status: "online", registeredAt: now, lastHeartbeat: now },
+      { id: "reviewer", name: "Reviewer", session, role: "reviewer", cwd: "/tmp", pid: 3, status: "offline", registeredAt: now, lastHeartbeat: now },
+      { id: "author", name: "Author", session, role: "dev", cwd: "/tmp", pid: 4, status: "online", registeredAt: now, lastHeartbeat: now },
+    ];
+    const task = {
+      id: "TASK-01", title: "Notify", status: "assigned", createdBy: "Lead",
+      assigneeId: "dev", assignee: "Developer", createdAt: now, updatedAt: now,
+    } as BacklogItem;
+    const previous: TaskComment[] = [{ timestamp: now, agent: "Reviewer", agentId: "reviewer", type: "comment", text: "Please confirm." }];
+
+    const subscribers = resolveTaskCommentSubscribers(task, previous, agents, "author", "Confirmed @Reviewer @Author");
+    assert.deepEqual(subscribers.map((a) => a.name), ["Developer", "Lead", "Reviewer"]);
   });
 });
 

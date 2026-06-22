@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Task comments now notify relevant task subscribers by default, so assignees/participants wake and reassess task state without a separate `amux_send`.
+
 ### Removed
 
 - Removed `/amux context` and `/amux manage` command surfaces from the primary command model. Use `/amux project vision ...` and `/amux new ...` instead.

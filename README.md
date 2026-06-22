@@ -176,7 +176,7 @@ amux_task({ action: "comment", id: "TASK-01", content: "Looks good, one suggesti
 amux_task({ action: "summary" })
 ```
 
-Lifecycle events (assign, pick, review, done, drop, block) are automatically recorded as activity in `task-comments/<ITEM-ID>.jsonl`. Use `review` when implementation is ready for review/integration; use `done` when work is reviewed, integrated, and verified. Simple workflows can still mark work done directly. Use `amux_send` only for exceptional non-task communication; delivered messages show intent and age so stale context is visible.
+Lifecycle events (assign, pick, review, done, drop, block) are automatically recorded as activity in `task-comments/<ITEM-ID>.jsonl`. Task comments are durable and notify relevant subscribers by default (assignee, creator, previous commenters, and `@AgentName` mentions); pass `notify: false` or `silent: true` for a quiet note. Use `review` when implementation is ready for review/integration; use `done` when work is reviewed, integrated, and verified. Simple workflows can still mark work done directly. Use `amux_send` only for exceptional non-task communication; delivered messages show intent and age so stale context is visible.
 
 For token-efficient review handoff, include a compact free-form summary when marking work ready for review:
 
