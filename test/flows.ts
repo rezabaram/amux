@@ -2378,6 +2378,28 @@ describe("Prompt assembly", () => {
   });
 });
 
+describe("Public core barrel", () => {
+  it("does not re-export duplicate names from wildcard exports", () => {
+    const indexPath = join(process.cwd(), "core", "index.ts");
+    const index = readF(indexPath, "utf8");
+    const modules = [...index.matchAll(/^export \* from "\.\/(.+)";$/gm)].map((m) => m[1]!);
+    const seen = new Map<string, string>();
+    const duplicates: string[] = [];
+    for (const mod of modules) {
+      const path = join(process.cwd(), "core", `${mod}.ts`);
+      const source = readF(path, "utf8");
+      const names = [...source.matchAll(/^export\s+(?:async\s+)?(?:function|const|let|var|class|interface|type)\s+([A-Za-z0-9_]+)/gm)]
+        .map((m) => m[1]!);
+      for (const name of names) {
+        const previous = seen.get(name);
+        if (previous) duplicates.push(`${name} (${previous}, ${mod})`);
+        else seen.set(name, mod);
+      }
+    }
+    assert.deepEqual(duplicates, []);
+  });
+});
+
 describe("Ways of Working (WOW.md)", () => {
   const session = testSession("wow");
   after(() => cleanupSession(session));
