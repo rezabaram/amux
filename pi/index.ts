@@ -128,6 +128,10 @@ import {
   type TaskComment,
 } from "../core/task-comments";
 import {
+  planTaskCommentNotifications,
+  planDiscussionNotifications,
+} from "../core/notification-service";
+import {
   projectContextPath,
   readProjectContext,
   writeProjectContext,
@@ -174,7 +178,6 @@ import {
   serviceBlockTask,
   serviceGetTaskShowData,
 } from "../core/task-service";
-
 
 
 export default function (pi: ExtensionAPI) {
@@ -428,7 +431,6 @@ export default function (pi: ExtensionAPI) {
       ],
     };
   });
-
 
   // -- Auto-save model preference --
 
@@ -877,7 +879,6 @@ export default function (pi: ExtensionAPI) {
       const projFiles = listFiles(projDir);
       sections.push(`Project (${projDir}):\n` +
         (projFiles.length > 0 ? projFiles.map((f) => `  - ${f}`).join("\n") : "  (empty)"));
-
 
       // Agent level
       const aDir = agentArtifactsDir(myId);
@@ -1540,7 +1541,6 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-
   async function discussionParticipantsForSession(session: string): Promise<ChannelParticipant[]> {
     const registry = await readRegistry(session);
     return Object.values(registry).map((agent) => ({
@@ -1587,33 +1587,6 @@ export default function (pi: ExtensionAPI) {
     return resolved;
   }
 
-  async function notifyDiscussionParticipants(
-    discussion: Discussion,
-    notificationType: "discussion-started" | "discussion-post" | "discussion-closed",
-    message: string,
-    options: { notify?: boolean; silent?: boolean },
-    previewSource?: string,
-  ): Promise<number> {
-    if (options.silent || options.notify === false) return 0;
-    const targets = discussion.participants.filter((p) => p.id !== myId);
-    for (const target of targets) {
-      sendToInbox(target.session, target.id, {
-        id: newMessageId(),
-        from: myId!,
-        fromName: myName!,
-        fromRole: myRoleName,
-        fromSession: mySession!,
-        timestamp: new Date().toISOString(),
-        message,
-        category: discussion.kind === "brainstorm" ? "brainstorm" : "fyi",
-        notificationType,
-        discussionId: discussion.id,
-        preview: postPreview(previewSource || message),
-        requiresAttention: true,
-      });
-    }
-    return targets.length;
-  }
 
   // - amux_discussion -------------------------------------------
 
@@ -1681,7 +1654,21 @@ export default function (pi: ExtensionAPI) {
           });
 
           const discussion = readDiscussion(mySession, id)!;
-          await notifyDiscussionParticipants(discussion, "discussion-started", discussionNotificationMessage({ action: "started", discussionId: discussion.id, topic: discussion.topic, authorName: myName }), params);
+          {
+            const plans = planDiscussionNotifications({
+              discussion, action: "started",
+              senderId: myId, senderName: myName, senderRole: myRoleName, senderSession: mySession,
+              skip: params.silent || params.notify === false,
+            });
+            for (const p of plans) {
+              sendToInbox(p.recipientSession, p.recipientId, {
+                id: newMessageId(),
+                from: myId, fromName: myName, fromRole: myRoleName, fromSession: mySession,
+                timestamp: new Date().toISOString(),
+                ...p.message,
+              });
+            }
+          }
           const view = renderDiscussion(discussion);
           return {
             content: [{ type: "text", text: view }],
@@ -1997,31 +1984,23 @@ export default function (pi: ExtensionAPI) {
 
     const registry = await readRegistry(session);
     const agents = Object.values(registry);
-    const recipients = resolveTaskCommentSubscribers(task, previousComments, agents, myId, comment.text);
-    const preview = taskCommentPreview(comment.text);
-    const notified: string[] = [];
-
-    for (const recipient of recipients) {
-      const requiresAttention = true;
-      if (shouldSignalAgent(recipient)) {
-        await updateAgent(session, recipient.id, { attentionPending: true });
-      }
-      sendToInbox(session, recipient.id, {
-        id: newMessageId(),
-        from: myId,
-        fromName: myName,
-        fromRole: myRoleName,
-        fromSession: session,
-        timestamp: comment.timestamp,
-        message: taskCommentNotificationMessage({ taskId: task.id, taskTitle: task.title, authorName: myName, preview }),
-        category: "task-comment",
-        taskId: task.id,
-        notificationType: "task-comment",
-        commentId: comment.id,
-        preview,
-        requiresAttention,
+    {
+      const plans = planTaskCommentNotifications({
+        task, comment, previousComments, agents,
+        senderId: myId, senderName: myName, senderRole: myRoleName, senderSession: mySession!,
+        skip: options.silent || options.notify === false,
       });
-      notified.push(recipient.name);
+      for (const p of plans) {
+        if (p.shouldSignal) {
+          await updateAgent(mySession!, p.recipientId, { attentionPending: true });
+        }
+        sendToInbox(p.recipientSession, p.recipientId, {
+          id: newMessageId(),
+          from: myId, fromName: myName, fromRole: myRoleName, fromSession: mySession!,
+          timestamp: comment.timestamp,
+          ...p.message,
+        });
+      }
     }
 
     return notified;
@@ -2180,7 +2159,6 @@ export default function (pi: ExtensionAPI) {
     return (await ctx.ui.select("Which project?", projects)) ?? null;
   }
 
-
   // -- workspace handler --
 
   async function handleWorkspace(ctx: ExtensionContext): Promise<void> {
@@ -2252,7 +2230,6 @@ export default function (pi: ExtensionAPI) {
       }
     }
   }
-
 
   // -- new command shortcuts ------------------------------------
 
@@ -2499,7 +2476,6 @@ export default function (pi: ExtensionAPI) {
     return handleContext(args, ctx);
   }
 
-
   // ── shared managed-artifact handler ──────────────────────────
 
   type ArtifactOps = {
@@ -2608,7 +2584,6 @@ ${content}`, "info");
   }
 
 
-
   // -- wow handler --
 
   async function handleWow(args: string[], ctx: ExtensionContext): Promise<void> {
@@ -2623,7 +2598,6 @@ ${content}`, "info");
       path: () => wowPath(mySession),
     });
   }
-
 
 
   // -- status set command ---------------------------------------
@@ -2656,7 +2630,6 @@ ${content}`, "info");
       "info"
     );
   }
-
 
   // -- Helpers --------------------------------------------------
 
@@ -2701,7 +2674,6 @@ ${content}`, "info");
   function projectArtifactsDir(): string {
     return sessionFile(mySession!, "artifacts", "project");
   }
-
 
   function agentArtifactsDir(agentId: string): string {
     return sessionFile(mySession!, "artifacts", "agents", agentId);
