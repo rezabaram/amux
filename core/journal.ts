@@ -13,6 +13,7 @@ import {
   sessionFile,
   readJsonlSync,
   appendJsonlSync,
+  formatTimestamp,
 } from "./storage.ts";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -85,7 +86,7 @@ export function getRecentEntries(session: string, limit: number = JOURNAL_WINDOW
  *   [2026-06-19 14:00] agent1 (decision): Use zod for validation
  */
 export function formatEntry(entry: JournalEntry): string {
-  const date = entry.timestamp.slice(0, 16).replace("T", " ");
+  const date = formatTimestamp(entry.timestamp);
   const ctx = entry.context ? ` [${entry.context}]` : "";
   return `[${date}] ${entry.agent} (${entry.type})${ctx}: ${entry.content}`;
 }

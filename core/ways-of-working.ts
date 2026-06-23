@@ -9,9 +9,10 @@
  * WoW = how we collaborate; context = what we're building.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ensureDirSync, sessionFile } from "./storage.ts";
+import { ensureDirSync, readCappedFile } from "./storage.ts";
+import { projectArtifactsPath } from "./project-context.ts";
 
 export const WOW_FILENAME = "WOW.md";
 export const DEFAULT_WOW_PREVIEW_LIMIT = 4096;
@@ -38,10 +39,6 @@ export const DEFAULT_WAYS_OF_WORKING = `# Ways of Working
 
 // ─── Paths ───────────────────────────────────────────────────
 
-function projectArtifactsPath(session: string): string {
-  return sessionFile(session, "artifacts", "project");
-}
-
 export function wowPath(session: string): string {
   return join(projectArtifactsPath(session), WOW_FILENAME);
 }
@@ -52,17 +49,7 @@ export function readWaysOfWorking(
   session: string,
   maxLength = DEFAULT_WOW_PREVIEW_LIMIT,
 ): string | null {
-  const path = wowPath(session);
-  if (!existsSync(path)) return null;
-  try {
-    let content = readFileSync(path, "utf8").trim();
-    if (maxLength > 0 && content.length > maxLength) {
-      content = content.slice(0, maxLength) + `\n\n[truncated -- see full file at ${path}]`;
-    }
-    return content || null;
-  } catch {
-    return null;
-  }
+  return readCappedFile(wowPath(session), maxLength);
 }
 
 export function writeWaysOfWorking(session: string, content: string): string {

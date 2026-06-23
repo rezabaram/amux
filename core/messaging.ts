@@ -31,6 +31,7 @@ import {
   appendJsonlSync,
   readJson,
   withJsonFile,
+  truncatePreview,
 } from "./storage.ts";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -204,8 +205,7 @@ export function appendToHistory(session: string, message: InboxMessage): void {
 // ─── Pending Replies ─────────────────────────────────────────
 
 export function messagePreview(text: string, maxLength = 160): string {
-  const compact = text.replace(/[\r\n\t]+/g, " ").replace(/ +/g, " ").trim();
-  return compact.length > maxLength ? `${compact.slice(0, Math.max(0, maxLength - 1))}…` : compact;
+  return truncatePreview(text, maxLength);
 }
 
 export async function createPendingReply(

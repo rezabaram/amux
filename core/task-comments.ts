@@ -12,6 +12,8 @@ import {
   sessionFile,
   readJsonlSync,
   appendJsonlSync,
+  truncatePreview,
+  formatTimestamp,
 } from "./storage.ts";
 import type { BacklogItem } from "./backlog.ts";
 import type { AgentInfo } from "./registry.ts";
@@ -65,14 +67,13 @@ export function readTaskComments(
  *   [2026-06-20 14:05] system (activity): Assigned to Bob by Alice
  */
 export function formatTaskComment(entry: TaskComment): string {
-  const date = entry.timestamp.slice(0, 16).replace("T", " ");
+  const date = formatTimestamp(entry.timestamp);
   return `[${date}] ${entry.agent} (${entry.type}): ${entry.text}`;
 }
 
 /** Return a compact one-line preview suitable for inbox notifications and prompt summaries. */
 export function taskCommentPreview(text: string, maxLength = 160): string {
-  const compact = text.replace(/[\r\n\t]+/g, " ").replace(/ +/g, " ").trim();
-  return compact.length > maxLength ? `${compact.slice(0, Math.max(0, maxLength - 1))}…` : compact;
+  return truncatePreview(text, maxLength);
 }
 
 /** Return only substantive task discussion comments, excluding lifecycle activity entries. */

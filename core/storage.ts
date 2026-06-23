@@ -14,7 +14,7 @@
  */
 
 import { readFile, writeFile, rename, mkdir, readdir, open, stat, unlink } from "node:fs/promises";
-import { readFileSync, appendFileSync, mkdirSync } from "node:fs";
+import { readFileSync, appendFileSync, mkdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
@@ -105,6 +105,53 @@ export function appendJsonlSync(path: string, entry: unknown): void {
 /** Ensure a directory exists (synchronous). */
 export function ensureDirSync(dirPath: string): void {
   mkdirSync(dirPath, { recursive: true });
+}
+
+// ─── Shared Display / Read Helpers ─────────────────────────
+
+/**
+ * Compact a text blob to a single-line preview of at most `maxLength` chars.
+ *
+ * Collapses whitespace (including newlines/tabs) to single spaces, trims, and
+ * appends an ellipsis if the result still exceeds `maxLength`. The canonical
+ * implementation for all one-line previews (message/comment/post). Re-export
+ * thin wrappers (messagePreview / taskCommentPreview / postPreview) live in
+ * their domain modules for call-site clarity.
+ */
+export function truncatePreview(text: string, maxLength = 160): string {
+  const compact = text.replace(/[\r\n\t]+/g, " ").replace(/ +/g, " ").trim();
+  return compact.length > maxLength ? `${compact.slice(0, Math.max(0, maxLength - 1))}…` : compact;
+}
+
+/**
+ * Format an ISO 8601 timestamp as a compact "YYYY-MM-DD HH:MM" string.
+ * The canonical display format for all human-readable timestamps (comments,
+ * journal entries, discussion posts). Centralized so the policy lives in one
+ * place and is reused by both low-level domain modules and renderers.
+ */
+export function formatTimestamp(iso: string): string {
+  return iso.slice(0, 16).replace("T", " ");
+}
+
+/**
+ * Read a text file and cap its length, returning null if it is missing.
+ *
+ * Standardizes the read-with-size-guard pattern used by spec/context/WoW
+ * previews. When truncation occurs, appends a path-aware suffix so the reader
+ * knows where to find the full file (the bodies-on-demand convention).
+ * Malformed/missing files return null rather than throwing.
+ */
+export function readCappedFile(path: string, maxChars: number): string | null {
+  if (!existsSync(path)) return null;
+  try {
+    let content = readFileSync(path, "utf8").trim();
+    if (maxChars > 0 && content.length > maxChars) {
+      content = content.slice(0, maxChars) + `\n\n[truncated -- see full file at ${path}]`;
+    }
+    return content || null;
+  } catch {
+    return null;
+  }
 }
 
 // ─── Coordinated Read-Modify-Write ──────────────────────────

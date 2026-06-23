@@ -16,8 +16,9 @@ import {
   withJsonFile,
   appendJsonlSync,
   readJsonlSync,
+  readCappedFile,
 } from "./storage.ts";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -287,16 +288,7 @@ export function readSpecPreview(
   } catch {
     return null;
   }
-  if (!existsSync(path)) return null;
-  try {
-    let content = readFileSync(path, "utf8").trim();
-    if (content.length > maxChars) {
-      content = content.slice(0, maxChars) + "\n\n[truncated]";
-    }
-    return content || null;
-  } catch {
-    return null;
-  }
+  return readCappedFile(path, maxChars);
 }
 
 export interface PlanTaskSpecResult {

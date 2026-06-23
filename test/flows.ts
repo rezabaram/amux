@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 
-import { sessionFile } from "../core/storage.ts";
+import { sessionFile, truncatePreview, readCappedFile, formatTimestamp } from "../core/storage.ts";
 
 import {
   readRegistry,
@@ -91,6 +91,7 @@ import {
   type Discussion,
   resolveDiscussionParticipants,
   normalizeAudience,
+  postPreview,
 } from "../core/discussions.ts";
 
 import {
@@ -1919,8 +1920,10 @@ describe("Task spec helpers", () => {
 
     const preview = readSpecPreview(session, relPath, 100);
     assert.ok(preview);
-    assert.ok(preview!.length < 200);
-    assert.ok(preview!.includes("[truncated]"));
+    // Truncated to ~maxChars plus a path-aware suffix (longer than the old bare suffix).
+    assert.ok(preview!.length < 5000, "must be truncated well below original");
+    assert.ok(preview!.includes("[truncated -- see full file at "));
+    assert.ok(preview!.includes(fullPath));
   });
 
   it("specPath persists on BacklogItem", async () => {
@@ -2630,6 +2633,78 @@ describe("Public core barrel", () => {
       }
     }
     assert.deepEqual(duplicates, []);
+  });
+});
+
+describe("Shared core helpers (deduplication)", () => {
+  it("truncatePreview collapses whitespace and trims", () => {
+    assert.equal(truncatePreview("  hello\n\tworld  "), "hello world");
+    assert.equal(truncatePreview("a   b\tc\nd"), "a b c d");
+    assert.equal(truncatePreview(""), "");
+    assert.equal(truncatePreview("   "), "");
+  });
+
+  it("truncatePreview appends ellipsis when exceeding maxLength", () => {
+    const out = truncatePreview("abcdefghij", 5);
+    assert.equal(out.length, 5);
+    assert.ok(out.endsWith("…"));
+    assert.equal(out.slice(0, -1), "abcd");
+  });
+
+  it("truncatePreview returns input unchanged when within maxLength", () => {
+    assert.equal(truncatePreview("short", 160), "short");
+    assert.equal(truncatePreview("exactly ten", "exactly ten".length), "exactly ten");
+  });
+
+  it("public preview wrappers delegate identically to truncatePreview", () => {
+    const body = "line one\nwith\ttabs   and spaces\n\n";
+    // All three domain wrappers must produce the same output as the canonical helper.
+    assert.equal(taskCommentPreview(body), truncatePreview(body));
+    assert.equal(messagePreview(body), truncatePreview(body));
+    assert.equal(postPreview(body), truncatePreview(body));
+  });
+
+  it("readCappedFile returns null for missing files", () => {
+    assert.equal(readCappedFile(join(tmpdir(), "amux-no-such-file-xyz.md"), 100), null);
+  });
+
+  it("readCappedFile returns full content when under the cap", () => {
+    const dir = mkdtempSync(join(tmpdir(), "amux-cap-"));
+    const path = join(dir, "small.md");
+    writeFileSync(path, "hello world", "utf8");
+    assert.equal(readCappedFile(path, 100), "hello world");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("readCappedFile truncates with path-aware suffix when over the cap", () => {
+    const dir = mkdtempSync(join(tmpdir(), "amux-cap-"));
+    const path = join(dir, "big.md");
+    writeFileSync(path, "x".repeat(500), "utf8");
+    const out = readCappedFile(path, 50);
+    assert.ok(out);
+    assert.ok(out!.startsWith("x".repeat(50)));
+    assert.ok(out!.includes("[truncated -- see full file at "));
+    assert.ok(out!.includes(path));
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("readCappedFile with maxChars 0 returns full content untruncated", () => {
+    const dir = mkdtempSync(join(tmpdir(), "amux-cap-"));
+    const path = join(dir, "full.md");
+    const body = "x".repeat(300);
+    writeFileSync(path, body, "utf8");
+    assert.equal(readCappedFile(path, 0), body);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("formatTimestamp renders ISO as YYYY-MM-DD HH:MM", () => {
+    assert.equal(formatTimestamp("2026-06-23T14:05:33.123Z"), "2026-06-23 14:05");
+    assert.equal(formatTimestamp("2025-01-02T03:04:05Z"), "2025-01-02 03:04");
+  });
+
+  it("formatTimestamp matches the previous inline formatting", () => {
+    const iso = "2026-06-23T08:30:00.000Z";
+    assert.equal(formatTimestamp(iso), iso.slice(0, 16).replace("T", " "));
   });
 });
 

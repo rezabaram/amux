@@ -6,9 +6,9 @@
  * into agent prompts by adapters.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ensureDirSync, sessionFile } from "./storage.ts";
+import { ensureDirSync, sessionFile, readCappedFile } from "./storage.ts";
 
 export const PROJECT_CONTEXT_FILENAME = "CONTEXT.md";
 export const DEFAULT_CONTEXT_PREVIEW_LIMIT = 4096;
@@ -25,17 +25,7 @@ export function readProjectContext(
   session: string,
   maxLength = DEFAULT_CONTEXT_PREVIEW_LIMIT,
 ): string | null {
-  const path = projectContextPath(session);
-  if (!existsSync(path)) return null;
-  try {
-    let content = readFileSync(path, "utf8").trim();
-    if (maxLength > 0 && content.length > maxLength) {
-      content = content.slice(0, maxLength) + `\n\n[truncated -- see full file at ${path}]`;
-    }
-    return content || null;
-  } catch {
-    return null;
-  }
+  return readCappedFile(projectContextPath(session), maxLength);
 }
 
 export function writeProjectContext(session: string, content: string): string {

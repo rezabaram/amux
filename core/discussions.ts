@@ -28,6 +28,8 @@ import {
   sessionFile,
   readJsonlSync,
   appendJsonlSync,
+  truncatePreview,
+  formatTimestamp,
 } from "./storage.ts";
 import { randomUUID } from "node:crypto";
 import { readdirSync } from "node:fs";
@@ -528,7 +530,7 @@ export function renderDiscussion(d: Discussion): string {
     lines.push("(no posts yet)");
   } else {
     for (const p of d.posts) {
-      const date = p.timestamp.slice(0, 16).replace("T", " ");
+      const date = formatTimestamp(p.timestamp);
       lines.push(`[${date}] ${p.authorName}: ${p.content}`);
     }
   }
@@ -604,6 +606,5 @@ function withCreatorIncluded(
 
 /** Compact preview of post content, for notifications. */
 export function postPreview(content: string, maxLength = 160): string {
-  const compact = content.replace(/[\r\n\t]+/g, " ").replace(/ +/g, " ").trim();
-  return compact.length > maxLength ? `${compact.slice(0, Math.max(0, maxLength - 1))}…` : compact;
+  return truncatePreview(content, maxLength);
 }
