@@ -88,9 +88,6 @@ import {
   markPendingReplyReplied,
   readPendingReplies,
   messagePreview,
-  taskCommentNotificationMessage,
-  assignmentNotificationMessage,
-  discussionNotificationMessage,
   type InboxMessage,
 } from "../core/messaging";
 import {
@@ -123,15 +120,15 @@ import {
   appendTaskComment,
   readTaskComments,
   formatTaskComment,
-  resolveTaskCommentSubscribers,
-  taskCommentPreview,
   type TaskComment,
 } from "../core/task-comments";
 import {
   planTaskCommentNotifications,
   planDiscussionNotifications,
+  planAssignmentNotification,
+  type NotificationPlan,
 } from "../core/notification-service";
-import { sanitizeBranchName, deriveWorktreePath } from "../core/setup-service";
+import { deriveWorktreePath } from "../core/setup-service";
 import {
   projectContextPath,
   readProjectContext,
@@ -161,7 +158,6 @@ import {
   renderDiscussionList,
   resolveDiscussionParticipants,
   normalizeAudience,
-  postPreview,
 } from "../core/discussions";
 import {
   renderTaskListRow,
@@ -1424,18 +1420,11 @@ export default function (pi: ExtensionAPI) {
           const taskIds = params.id.split(",").map((s: string) => s.trim()).filter(Boolean);
           const result = await serviceAssignTasks(mySession, taskIds, target.id, target.name, myId, myName);
 
-          // Pi-specific: deliver a concrete assignment notification when service requests attention.
+          // Pi-specific: deliver the core-planned assignment notification when service requests attention.
           if (result.shouldSignal) {
-            sendToInbox(mySession, result.targetId, {
-              id: newMessageId(),
-              from: myId,
-              fromName: myName || "system",
-              fromSession: mySession,
-              timestamp: new Date().toISOString(),
-              message: assignmentNotificationMessage(result.assigned.map((t) => ({ id: t.id, title: t.title }))),
-              category: "fyi",
-              requiresAttention: true,
-            });
+            await deliverNotificationPlans([
+              planAssignmentNotification(target, result.assigned.map((t) => ({ id: t.id, title: t.title }))),
+            ]);
           }
 
           const assignedIds = result.assigned.map((t) => t.id).join(", ");
@@ -1589,6 +1578,23 @@ export default function (pi: ExtensionAPI) {
   }
 
 
+  async function deliverNotificationPlans(plans: NotificationPlan[], senderTimestamp?: string): Promise<void> {
+    for (const plan of plans) {
+      if (plan.shouldSignal) {
+        await updateAgent(plan.recipientSession, plan.recipientId, { attentionPending: true });
+      }
+      sendToInbox(plan.recipientSession, plan.recipientId, {
+        id: newMessageId(),
+        from: myId!,
+        fromName: myName!,
+        fromRole: myRoleName,
+        fromSession: mySession!,
+        timestamp: senderTimestamp || new Date().toISOString(),
+        ...plan.message,
+      });
+    }
+  }
+
   // - amux_discussion -------------------------------------------
 
   pi.registerTool({
@@ -1655,21 +1661,11 @@ export default function (pi: ExtensionAPI) {
           });
 
           const discussion = readDiscussion(mySession, id)!;
-          {
-            const plans = planDiscussionNotifications({
-              discussion, action: "started",
-              senderId: myId, senderName: myName, senderRole: myRoleName, senderSession: mySession,
-              skip: params.silent || params.notify === false,
-            });
-            for (const p of plans) {
-              sendToInbox(p.recipientSession, p.recipientId, {
-                id: newMessageId(),
-                from: myId, fromName: myName, fromRole: myRoleName, fromSession: mySession,
-                timestamp: new Date().toISOString(),
-                ...p.message,
-              });
-            }
-          }
+          await deliverNotificationPlans(planDiscussionNotifications({
+            discussion, action: "started",
+            senderId: myId, senderName: myName, senderRole: myRoleName, senderSession: mySession,
+            skip: params.silent || params.notify === false,
+          }));
           const view = renderDiscussion(discussion);
           return {
             content: [{ type: "text", text: view }],
@@ -1687,13 +1683,11 @@ export default function (pi: ExtensionAPI) {
           });
           if (!discussion) throw new Error(`Discussion ${params.id} not found.`);
 
-          await notifyDiscussionParticipants(
-            discussion,
-            "discussion-post",
-            discussionNotificationMessage({ action: "post", discussionId: discussion.id, topic: discussion.topic, authorName: myName, preview: postPreview(params.content) }),
-            params,
-            params.content,
-          );
+          await deliverNotificationPlans(planDiscussionNotifications({
+            discussion, action: "post", preview: params.content,
+            senderId: myId, senderName: myName, senderRole: myRoleName, senderSession: mySession,
+            skip: params.silent || params.notify === false,
+          }));
 
           const view = renderDiscussion(discussion);
           return {
@@ -1739,13 +1733,11 @@ export default function (pi: ExtensionAPI) {
           });
           if (!discussion) throw new Error(`Discussion ${params.id} not found.`);
 
-          await notifyDiscussionParticipants(
-            discussion,
-            "discussion-closed",
-            discussionNotificationMessage({ action: "closed", discussionId: discussion.id, topic: discussion.topic, authorName: myName, preview: postPreview(params.summary) }),
-            params,
-            params.summary,
-          );
+          await deliverNotificationPlans(planDiscussionNotifications({
+            discussion, action: "closed", preview: params.summary,
+            senderId: myId, senderName: myName, senderRole: myRoleName, senderSession: mySession,
+            skip: params.silent || params.notify === false,
+          }));
 
           const view = renderDiscussion(discussion);
           return {
@@ -1985,26 +1977,12 @@ export default function (pi: ExtensionAPI) {
 
     const registry = await readRegistry(session);
     const agents = Object.values(registry);
-    {
-      const plans = planTaskCommentNotifications({
-        task, comment, previousComments, agents,
-        senderId: myId, senderName: myName, senderRole: myRoleName, senderSession: mySession!,
-        skip: options.silent || options.notify === false,
-      });
-      for (const p of plans) {
-        if (p.shouldSignal) {
-          await updateAgent(mySession!, p.recipientId, { attentionPending: true });
-        }
-        sendToInbox(p.recipientSession, p.recipientId, {
-          id: newMessageId(),
-          from: myId, fromName: myName, fromRole: myRoleName, fromSession: mySession!,
-          timestamp: comment.timestamp,
-          ...p.message,
-        });
-      }
-    }
-
-    return notified;
+    const plans = planTaskCommentNotifications({
+      task, comment, previousComments, agents,
+      senderId: myId, senderName: myName, senderRole: myRoleName, senderSession: session,
+    });
+    await deliverNotificationPlans(plans, comment.timestamp);
+    return plans.map((p) => p.recipientName);
   }
 
   // -- progress handler --
@@ -2630,21 +2608,6 @@ ${content}`, "info");
   }
 
   // -- Helpers --------------------------------------------------
-
-  /**
-   * Sanitize an agent name for use as a git branch component.
-   * Lowercases, replaces special characters with hyphens, collapses
-   * consecutive hyphens, and trims leading/trailing hyphens.
-   */
-  function sanitizeBranchName(name: string): string {
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9._-]/g, "-")
-      .replace(/\.\./g, "-")       // no consecutive dots (git ref rule)
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "")
-      || "unnamed";
-  }
 
   /** Parse shortcut command arguments into positional args and --flag values. */
   function parseShortcutArgs(args: string[]): { positional: string[]; flags: Record<string, string | boolean> } {

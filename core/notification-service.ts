@@ -8,13 +8,13 @@
 
 import {
   type InboxMessage,
-  newMessageId,
   taskCommentNotificationMessage,
   discussionNotificationMessage,
+  assignmentNotificationMessage,
 } from "./messaging.ts";
-import { resolveTaskCommentSubscribers, type TaskComment } from "./task-comments.ts";
+import { resolveTaskCommentSubscribers, taskCommentPreview, type TaskComment } from "./task-comments.ts";
 import { type BacklogItem } from "./backlog.ts";
-import { type Discussion } from "./discussions.ts";
+import { type Discussion, postPreview } from "./discussions.ts";
 import { type AgentInfo, shouldSignalAgent } from "./registry.ts";
 
 // ─── Plan Type ────────────────────────────────────────────────
@@ -28,7 +28,7 @@ export interface NotificationPlan {
   recipientName: string;
   /** Whether the target should be flagged for attention (attentionPending). */
   shouldSignal: boolean;
-  /** Pre-built inbox message (caller delivers via sendToInbox). */
+  /** Pre-built inbox message body/metadata (caller adds id/timestamp/sender and delivers via sendToInbox). */
   message: Omit<InboxMessage, "id" | "timestamp" | "from" | "fromName" | "fromRole" | "fromSession">;
 }
 
@@ -66,9 +66,7 @@ export function planTaskCommentNotifications(
 
   return recipients.map((r) => {
     const shouldSignal = shouldSignalAgent(r);
-    const preview = args.comment.text.length > 160
-      ? args.comment.text.slice(0, 157) + "..."
-      : args.comment.text;
+    const preview = taskCommentPreview(args.comment.text);
     return {
       recipientId: r.id,
       recipientSession: r.session ?? args.senderSession,
@@ -88,6 +86,9 @@ export function planTaskCommentNotifications(
         category: "task-comment",
         taskId: args.task.id,
         notificationType: "task-comment",
+        commentId: args.comment.id,
+        preview,
+        requiresAttention: true,
       },
     };
   });
@@ -97,7 +98,8 @@ export function planTaskCommentNotifications(
 
 export interface DiscussionNotificationArgs {
   discussion: Discussion;
-  action: "started" | "posted" | "closed";
+  action: "started" | "post" | "closed";
+  preview?: string;
   senderId: string;
   senderName: string;
   senderRole?: string;
@@ -132,10 +134,32 @@ export function planDiscussionNotifications(
         discussionId: args.discussion.id,
         topic: args.discussion.topic,
         authorName: args.senderName,
+        preview: args.preview,
       }),
       category: args.discussion.kind === "brainstorm" ? "brainstorm" : "fyi",
-      notificationType: `discussion-${args.action}`,
+      notificationType: args.action === "post" ? "discussion-post" : `discussion-${args.action}`,
       discussionId: args.discussion.id,
+      preview: postPreview(args.preview || args.discussion.topic),
+      requiresAttention: true,
     },
   }));
+}
+
+// ─── Assignments ──────────────────────────────────────────────
+
+export function planAssignmentNotification(
+  target: AgentInfo,
+  tasks: Array<{ id: string; title: string }>,
+): NotificationPlan {
+  return {
+    recipientId: target.id,
+    recipientSession: target.session,
+    recipientName: target.name,
+    shouldSignal: true,
+    message: {
+      message: assignmentNotificationMessage(tasks),
+      category: "fyi",
+      requiresAttention: true,
+    },
+  };
 }

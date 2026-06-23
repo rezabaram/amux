@@ -174,6 +174,15 @@ import {
   type TaskComment,
 } from "../core/task-comments.ts";
 import {
+  planTaskCommentNotifications,
+  planDiscussionNotifications,
+  planAssignmentNotification,
+} from "../core/notification-service.ts";
+import {
+  sanitizeBranchName,
+  deriveWorktreePath,
+} from "../core/setup-service.ts";
+import {
   renderTaskListRow,
   renderTaskDetails,
   renderProgressSummary,
@@ -1553,6 +1562,52 @@ describe("Task-scoped comments", () => {
 
     const subscribers = resolveTaskCommentSubscribers(task, previous, agents, "author", "Confirmed @Reviewer @Author");
     assert.deepEqual(subscribers.map((a) => a.name), ["Developer", "Lead", "Reviewer"]);
+  });
+
+  it("plans task comment notifications with descriptive metadata", () => {
+    const now = new Date().toISOString();
+    const agents: AgentInfo[] = [
+      { id: "dev", name: "Developer", session, role: "dev", cwd: "/tmp", pid: 2, status: "online", availability: "idle", registeredAt: now, lastHeartbeat: now },
+      { id: "author", name: "Author", session, role: "dev", cwd: "/tmp", pid: 4, status: "online", registeredAt: now, lastHeartbeat: now },
+    ];
+    const task = { id: "TASK-01", title: "Notify", status: "assigned", assigneeId: "dev", assignee: "Developer", createdBy: "Author", createdAt: now, updatedAt: now } as BacklogItem;
+    const plans = planTaskCommentNotifications({
+      task,
+      comment: { id: "c1", timestamp: now, agent: "Author", agentId: "author", type: "comment", text: "Please check\nthis now." },
+      previousComments: [],
+      agents,
+      senderId: "author",
+      senderName: "Author",
+      senderSession: session,
+    });
+    assert.equal(plans.length, 1);
+    assert.equal(plans[0]!.recipientName, "Developer");
+    assert.equal(plans[0]!.shouldSignal, true);
+    assert.match(plans[0]!.message.message, /Comment added on TASK-01 \(Notify\) by Author/);
+    assert.equal(plans[0]!.message.notificationType, "task-comment");
+    assert.equal(plans[0]!.message.commentId, "c1");
+  });
+});
+
+describe("Setup/workspace helpers", () => {
+  it("sanitizes agent names for branch components", () => {
+    assert.equal(sanitizeBranchName("Senior Developer"), "senior-developer");
+    assert.equal(sanitizeBranchName(".."), "unnamed");
+  });
+
+  it("derives worktree path and branch name", () => {
+    const plan = deriveWorktreePath("/work/amux", "Developer 2");
+    assert.equal(plan.wsPath, "/work/amux-developer-2");
+    assert.equal(plan.branchName, "agent/developer-2");
+  });
+
+  it("plans assignment notifications", () => {
+    const now = new Date().toISOString();
+    const target: AgentInfo = { id: "dev", name: "Developer", session: "setup", role: "dev", cwd: "/tmp", pid: 1, status: "online", registeredAt: now, lastHeartbeat: now };
+    const plan = planAssignmentNotification(target, [{ id: "TASK-01", title: "Build it" }]);
+    assert.equal(plan.recipientName, "Developer");
+    assert.match(plan.message.message, /Assigned to you: TASK-01 — Build it/);
+    assert.equal(plan.message.requiresAttention, true);
   });
 });
 
@@ -3309,5 +3364,36 @@ describe("Discussions: audience mode and participant resolution", () => {
     assert.equal(normalizeAudience(undefined), "all");
     assert.equal(normalizeAudience("all"), "all");
     assert.equal(normalizeAudience("agents"), "agents");
+  });
+
+  it("plans discussion notifications for participants except the sender", () => {
+    const now = new Date().toISOString();
+    const discussion: Discussion = {
+      id: "DISC-01",
+      topic: "Retro",
+      kind: "brainstorm",
+      status: "open",
+      audience: "all",
+      participants: [
+        { id: "lead", name: "Lead", session },
+        { id: "dev", name: "Developer", session },
+      ],
+      createdAt: now,
+      createdBy: "Lead",
+      posts: [],
+    };
+    const plans = planDiscussionNotifications({
+      discussion,
+      action: "post",
+      preview: "One thing worked well.",
+      senderId: "lead",
+      senderName: "Lead",
+      senderSession: session,
+    });
+    assert.equal(plans.length, 1);
+    assert.equal(plans[0]!.recipientName, "Developer");
+    assert.equal(plans[0]!.message.category, "brainstorm");
+    assert.equal(plans[0]!.message.notificationType, "discussion-post");
+    assert.match(plans[0]!.message.message, /Post added to discussion DISC-01 by Lead/);
   });
 });
