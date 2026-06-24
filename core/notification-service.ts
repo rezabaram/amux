@@ -17,7 +17,7 @@ import {
 import { resolveTaskCommentSubscribers, taskCommentPreview, type TaskComment } from "./task-comments.ts";
 import { type BacklogItem } from "./backlog.ts";
 import { type Discussion, postPreview } from "./discussions.ts";
-import { type AgentInfo, shouldSignalAgent, updateAgent } from "./registry.ts";
+import { type AgentInfo, shouldSignalAgent, updateAgent, readRegistry } from "./registry.ts";
 
 // ─── Plan Type ────────────────────────────────────────────────
 
@@ -197,4 +197,28 @@ export async function deliverNotificationPlans(
       ...plan.message,
     });
   }
+}
+
+// ─── Task comment notification helper ────────────────────────
+
+/**
+ * Notify task-comment subscribers: plan notifications for a new comment,
+ * deliver them (attention flag + inbox write), and return the recipient names.
+ * Framework-neutral — combines planTaskCommentNotifications + deliverNotificationPlans.
+ */
+export async function notifyTaskCommentSubscribers(
+  session: string,
+  sender: NotificationSender,
+  task: BacklogItem,
+  previousComments: TaskComment[],
+  comment: TaskComment,
+): Promise<string[]> {
+  const registry = await readRegistry(session);
+  const agents = Object.values(registry);
+  const plans = planTaskCommentNotifications({
+    task, comment, previousComments, agents,
+    senderId: sender.id, senderName: sender.name, senderRole: sender.roleName, senderSession: session,
+  });
+  await deliverNotificationPlans(plans, sender, comment.timestamp);
+  return plans.map((p) => p.recipientName);
 }

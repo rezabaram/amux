@@ -41,8 +41,6 @@ import {
   isEffectivelyOnline,
   shouldSignalAgent,
   HEARTBEAT_INTERVAL_MS,
-  resolveAgent,
-  parseAddress,
   formatAddress,
   readRoles,
   getRole,
@@ -77,7 +75,6 @@ import {
   confirmDelivered,
   appendToHistory,
   watchInbox,
-  newMessageId,
   formatMessageAge,
   readPendingReplies,
   type InboxMessage,
@@ -92,27 +89,14 @@ import {
 import {
   type BacklogItem,
   readBacklog,
-  addTask,
-  getTask,
   readSpecPreview,
-  planTaskSpec,
-  archiveDoneTasks,
 } from "../core/backlog";
 import {
   getRecentEntries,
 } from "../core/journal";
 import {
-  appendTaskComment,
   readTaskComments,
-  formatTaskComment,
-  type TaskComment,
 } from "../core/task-comments";
-import {
-  planTaskCommentNotifications,
-  deliverNotificationPlans,
-  planAssignmentNotification,
-  type NotificationPlan,
-} from "../core/notification-service";
 import { deriveWorktreePath } from "../core/setup-service";
 import {
   projectContextPath,
@@ -130,21 +114,11 @@ import {
   wowPath,
 } from "../core/ways-of-working";
 import {
-  renderTaskListRow,
   renderTaskDetails,
   renderProgressSummary,
   renderAgentPresence,
   renderAgentWorkState,
 } from "../core/renderers";
-import {
-  serviceAssignTasks,
-  servicePickTask,
-  serviceCompleteTask,
-  serviceReviewTask,
-  serviceDropTask,
-  serviceBlockTask,
-  serviceGetTaskShowData,
-} from "../core/task-service";
 
 
 export default function (pi: ExtensionAPI) {
@@ -469,392 +443,12 @@ export default function (pi: ExtensionAPI) {
     });
   });
 
-  // - Neutral-registry tools (migrated) --------------------------
-  // amux_artifacts, amux_list, amux_project, amux_wow, amux_send,
-  // amux_broadcast, amux_discussion, amux_role, amux_reserve, and
-  // amux_journal are registered via the neutral tool registry bridge
-  // (pi/tool-adapter.ts). See allAmuxTools() in core/tools; slash commands
-  // remain in this Pi adapter. amux_task remains inline pending SPEC-18 Slice 5.
-
-  // - amux_task -------------------------------------------------
-
-  pi.registerTool({
-    name: "amux_task",
-    label: "Task Backlog",
-    description:
-      "Manage the task backlog. Actions: add (create task), list (show tasks), " +
-      "show (task details + comments/spec preview), comment (add task-scoped comment), " +
-      "plan/edit-plan (manage task-linked specs), " +
-      "assign (delegate to same-session agent, comma-separated IDs for batch), pick (claim/accept task), " +
-      "review (mark implementation ready for review), done (complete), drop (release back to queue), block (mark blocked), archive (archive completed items). " +
-      "Tasks can declare dependencies via dependsOn. " +
-      "Picking a task auto-reserves its files. Done/drop auto-releases them.",
-    promptSnippet: "Manage task backlog  -- add, list, show, comment, plan, edit-plan, assign, pick, review, done, drop, block, archive",
-    promptGuidelines: [
-      "Use action 'pick' to claim the next available task or accept an assigned task.",
-      "Picking a task auto-reserves its files. Done/drop auto-releases them.",
-      "Use action 'review' when implementation is ready for review/integration, and include commit/branch, diff summary, tests run, and known risks in summary.",
-      "Use action 'done' when reviewed/integrated/verified; reviewers should inspect spec + diff + tests before completing.",
-      "Use action 'assign' to delegate executable leaf work items to same-session agents  -- the assignee accepts by picking",
-      "Create and review high-level initiatives/milestones and their children before assigning executable child work.",
-      "It is OK to assign all defined leaf work up front; use dependsOn to enforce order, and assignees should pick one item at a time after completing the current item.",
-      "When working on a child item, inspect its parent context with amux_task show before picking or implementing.",
-      "Use dependsOn when adding an item that should wait for other items to complete.",
-      "Pass comma-separated IDs to assign multiple items in one state update.",
-      "Only the assignee can review/drop/block an assigned item; review items can be completed by a reviewer.",
-      "Use 'show' to view item details, parent context, linked spec preview, and comment history.",
-      "Use 'plan' and 'edit-plan' for first-class task-linked specs/checklists instead of ad-hoc project artifacts.",
-      "Use 'comment' for task-scoped discussion  -- prefer over amux_send for task-related topics. Comments notify relevant task subscribers by default; set notify:false or silent:true for quiet notes.",
-      "Use 'archive' to move done items that are no longer needed for ongoing implementation out of the active backlog.",
-    ],
-    parameters: Type.Object({
-      action: StringEnum(["add", "list", "show", "comment", "plan", "edit-plan", "assign", "pick", "review", "done", "drop", "block", "archive", "summary"] as const),
-      // add
-      title: Type.Optional(Type.String({ description: "Task title (required for add)" })),
-      description: Type.Optional(Type.String({ description: "Task description or acceptance criteria" })),
-      itemType: Type.Optional(
-        StringEnum(["task", "initiative", "milestone", "bug", "chore", "spec"] as const, {
-          description: "Item type: task (default), initiative, milestone, bug, chore, spec",
-        })
-      ),
-      files: Type.Optional(Type.Array(Type.String({ description: "Related file paths (auto-reserved on pick)" }))),
-      dependsOn: Type.Optional(Type.Array(Type.String({ description: "Task IDs this task depends on (for add)" }))),
-      parentId: Type.Optional(Type.String({ description: "Parent item ID for hierarchy (for add)" })),
-      order: Type.Optional(Type.Number({ description: "Sort order within siblings (for add)" })),
-      urgent: Type.Optional(Type.Boolean({ description: "If true, prepend to backlog instead of append" })),
-      // assign, pick, done, drop, block
-      id: Type.Optional(Type.String({ description: "Task ID (e.g. TASK-01)" })),
-      to: Type.Optional(Type.String({ description: "Agent name to assign the task to" })),
-      reason: Type.Optional(Type.String({ description: "Reason for blocking, or approach note for pick" })),
-      summary: Type.Optional(Type.String({ description: "Summary for review or done. For review, include commit/branch, diff summary, tests run, and known risks." })),
-      content: Type.Optional(Type.String({ description: "Comment text (for comment), or markdown spec content (for plan)" })),
-      notify: Type.Optional(Type.Boolean({ description: "For comment: notify task subscribers (default true). Set false for silent comments." })),
-      silent: Type.Optional(Type.Boolean({ description: "For comment: if true, do not notify task subscribers." })),
-      // list
-      status: Type.Optional(Type.String({ description: "Filter by status: todo, assigned, in-progress, review, done, blocked" })),
-    }),
-
-    async execute(_id, params) {
-      if (!mySession) throw new Error("amux session not active");
-
-      switch (params.action) {
-        // -- add ----------------------------------------------
-        case "add": {
-          if (!myName) throw new Error("Not registered. Use /amux new agent --join to set up, then /amux join.");
-          if (!params.title) throw new Error("Title is required for add.");
-
-          const now = new Date().toISOString();
-
-          // Validate parent reference if provided
-          if (params.parentId) {
-            const parent = await getTask(mySession, params.parentId);
-            if (!parent) throw new Error(`Parent item ${params.parentId} not found.`);
-          }
-
-          const task = await addTask(
-            mySession,
-            {
-              title: params.title,
-              description: params.description,
-              itemType: params.itemType as BacklogItem["itemType"],
-              status: "todo",
-              dependsOn: params.dependsOn,
-              parentId: params.parentId,
-              order: params.order,
-              files: params.files,
-              createdBy: myName,
-              createdAt: now,
-              updatedAt: now,
-            },
-            params.urgent
-          );
-
-          const urgentNote = params.urgent ? " (urgent  -- top of backlog)" : "";
-          const typeNote = task.itemType && task.itemType !== "task" ? `\n  Type: ${task.itemType}` : "";
-          const filesNote = task.files?.length ? `\n  Files: ${task.files.join(", ")}` : "";
-          const depsNote = task.dependsOn?.length ? `\n  Depends on: ${task.dependsOn.join(", ")}` : "";
-          return {
-            content: [{
-              type: "text",
-              text: `Created ${task.id}: ${task.title}${urgentNote}${typeNote}${depsNote}${filesNote}`,
-            }],
-            details: { task },
-          };
-        }
-
-        // -- list ---------------------------------------------
-        case "list": {
-          const tasks = await readBacklog(mySession);
-          let filtered = tasks;
-
-          if (params.status) {
-            filtered = filtered.filter((t) => t.status === params.status);
-          }
-
-          if (filtered.length === 0) {
-            const filterNote = params.status ? ` with status "${params.status}"` : "";
-            return {
-              content: [{ type: "text", text: `No tasks found${filterNote}.` }],
-              details: { tasks: [] },
-            };
-          }
-
-          const lines = filtered.map((t) => {
-            const pos = tasks.indexOf(t) + 1;
-            return renderTaskListRow(t, tasks, pos, myId);
-          });
-
-          return {
-            content: [{ type: "text", text: `Backlog (${filtered.length} task${filtered.length !== 1 ? "s" : ""}):\n\n${lines.join("\n")}` }],
-            details: { tasks: filtered },
-          };
-        }
-
-        // -- show ---------------------------------------------
-        case "show": {
-          if (!params.id) throw new Error("Task ID is required for show.");
-          const data = await serviceGetTaskShowData(mySession, params.id);
-          const text = renderTaskDetails(data.task, data.allTasks, {
-            currentAgentId: myId,
-            comments: data.comments,
-            specPreview: data.specPreview,
-          });
-          return {
-            content: [{ type: "text", text }],
-            details: { task: data.task, comments: data.comments },
-          };
-        }
-
-        // -- comment ------------------------------------------
-        case "comment": {
-          if (!myId || !myName) throw new Error("Not registered. Use /amux new agent --join to set up, then /amux join.");
-          if (!params.id) throw new Error("Task ID is required for comment.");
-          if (!params.content) throw new Error("Comment text is required (pass content parameter).");
-
-          const task = await getTask(mySession, params.id);
-          if (!task) throw new Error(`Task ${params.id} not found.`);
-
-          const previousComments = readTaskComments(mySession, params.id);
-          const comment = {
-            id: newMessageId(),
-            timestamp: new Date().toISOString(),
-            agent: myName,
-            agentId: myId,
-            type: "comment" as const,
-            text: params.content,
-          };
-          appendTaskComment(mySession, params.id, comment);
-
-          const shouldNotify = params.silent === true ? false : params.notify !== false;
-          const notified = shouldNotify
-            ? await notifyTaskCommentSubscribers(mySession, task, previousComments, comment)
-            : [];
-          const notifyText = shouldNotify
-            ? notified.length > 0 ? ` Notified: ${notified.join(", ")}.` : " No subscribers notified."
-            : " Notifications skipped.";
-
-          return {
-            content: [{ type: "text", text: `Comment added to ${params.id}.${notifyText}` }],
-            details: { taskId: params.id, commentId: comment.id, notified },
-          };
-        }
-
-        // -- plan ---------------------------------------------
-        case "plan": {
-          if (!myId || !myName) throw new Error("Not registered. Use /amux new agent --join to set up, then /amux join.");
-          if (!params.id) throw new Error("Task ID is required for plan.");
-
-          const task = await getTask(mySession, params.id);
-          if (!task) throw new Error(`Task ${params.id} not found.`);
-
-          const result = await planTaskSpec(mySession, task, params.content);
-          const verb = result.updated ? "updated" : result.created ? "created" : "ready";
-          const linkNote = result.linked ? "\nLinked specPath on backlog item." : "";
-          return {
-            content: [{
-              type: "text",
-              text: `Spec ${verb}: ${result.fullPath}${linkNote}\n\n${result.preview || "(empty)"}`,
-            }],
-            details: { taskId: params.id, specPath: result.specPath, fullPath: result.fullPath },
-          };
-        }
-
-        // -- edit-plan ----------------------------------------
-        case "edit-plan": {
-          if (!myId || !myName) throw new Error("Not registered. Use /amux new agent --join to set up, then /amux join.");
-          if (!params.id) throw new Error("Task ID is required for edit-plan.");
-
-          const task = await getTask(mySession, params.id);
-          if (!task) throw new Error(`Task ${params.id} not found.`);
-
-          const result = await planTaskSpec(mySession, task);
-
-          return {
-            content: [{
-              type: "text",
-              text: `Spec path: ${result.fullPath}\n\nUse read/edit tools to modify the spec.`,
-            }],
-            details: { taskId: params.id, specPath: result.specPath, fullPath: result.fullPath },
-          };
-        }
-
-        // -- summary ------------------------------------------
-        case "summary": {
-          const summary = await buildProgressSummary(mySession);
-          return {
-            content: [{ type: "text", text: summary }],
-            details: {},
-          };
-        }
-
-        // -- archive ------------------------------------------
-        case "archive": {
-          const result = await archiveDoneTasks(mySession);
-          const archivedIds = result.archived.map((t) => t.id).join(", ") || "none";
-          const skippedText = result.skipped.length > 0
-            ? `\nSkipped ${result.skipped.length}: ${result.skipped.map((s) => `${s.item.id} (${s.reason})`).join(", ")}`
-            : "";
-          return {
-            content: [{
-              type: "text",
-              text: `Archived ${result.archived.length} done item(s): ${archivedIds}.${skippedText}\nArchive: ${result.archivePath}`,
-            }],
-            details: result,
-          };
-        }
-
-        // -- assign -------------------------------------------
-        case "assign": {
-          if (!myId || !myName) throw new Error("Not registered. Use /amux new agent --join to set up, then /amux join.");
-          if (!params.id) throw new Error("Task ID(s) required for assign (comma-separated for batch).");
-          if (!params.to) throw new Error("Target agent name is required for assign.");
-
-          // Reject cross-session assignment
-          const { session: targetSession } = parseAddress(params.to, mySession);
-          if (targetSession !== mySession) {
-            throw new Error(
-              `Cross-session task assignment is not supported. ` +
-              `"${params.to}" resolves to session "${targetSession}", but tasks ` +
-              `can only be assigned to agents within the current session ("${mySession}").`
-            );
-          }
-
-          const target = await resolveAgent(params.to, mySession);
-          if (!target) throw new Error(`Agent "${params.to}" not found.`);
-
-          const taskIds = params.id.split(",").map((s: string) => s.trim()).filter(Boolean);
-          const result = await serviceAssignTasks(mySession, taskIds, target.id, target.name, myId, myName);
-
-          // Pi-specific: deliver the core-planned assignment notification when service requests attention.
-          if (result.shouldSignal) {
-            await deliverNotificationPlans([
-              planAssignmentNotification(target, result.assigned.map((t) => ({ id: t.id, title: t.title }))),
-            ], { id: myId, name: myName, roleName: myRoleName, session: mySession });
-          }
-
-          const assignedIds = result.assigned.map((t) => t.id).join(", ");
-          return {
-            content: [{
-              type: "text",
-              text: `Assigned ${assignedIds} to ${target.name}. Task state updated; visible via amux_task show.`,
-            }],
-            details: { tasks: result.assigned },
-          };
-        }
-
-        // -- pick ---------------------------------------------
-        case "pick": {
-          if (!myId || !myName) throw new Error("Not registered. Use /amux new agent --join to set up, then /amux join.");
-
-          const pickResult = await servicePickTask(mySession, params.id || undefined, myId, myName);
-
-          let pickText = `\u2713 Picked ${pickResult.task.id}: ${pickResult.task.title}`;
-          if (params.reason) pickText += `\n  Approach: ${params.reason}`;
-          if (pickResult.reserved.length > 0) pickText += `\n  Reserved: ${pickResult.reserved.join(", ")}`;
-          if (pickResult.conflicts.length > 0) {
-            pickText += `\n  \u26a0\ufe0f Could not reserve: ${pickResult.conflicts.map((c) => `${c.path} (${c.detail})`).join("; ")}`;
-          }
-
-          return {
-            content: [{ type: "text", text: pickText }],
-            details: pickResult,
-          };
-        }
-
-        // -- review -------------------------------------------
-        case "review": {
-          if (!myId) throw new Error("Not registered. Use /amux new agent --join to set up, then /amux join.");
-          if (!params.id) throw new Error("Task ID is required for review.");
-
-          const reviewResult = await serviceReviewTask(mySession, params.id, myId, myName || "agent", params.summary);
-
-          let reviewText = `◇ Ready for review ${reviewResult.task.id}: ${reviewResult.task.title}`;
-          if (params.summary) {
-            reviewText += `\n  Handoff: ${params.summary}`;
-          } else {
-            reviewText += `\n  Tip: include commit/branch, diff summary, tests run, and known risks in summary for token-efficient review.`;
-          }
-          reviewText += `\n  Reviewer flow: read spec → inspect diff → inspect tests → comment or done.`;
-          if (reviewResult.released.length > 0) reviewText += `\n  Released: ${reviewResult.released.join(", ")}`;
-
-          return {
-            content: [{ type: "text", text: reviewText }],
-            details: reviewResult,
-          };
-        }
-
-        // -- done ---------------------------------------------
-        case "done": {
-          if (!myId) throw new Error("Not registered. Use /amux new agent --join to set up, then /amux join.");
-          if (!params.id) throw new Error("Task ID is required for done.");
-
-          const doneResult = await serviceCompleteTask(mySession, params.id, myId, myName || "agent", params.summary);
-
-          let doneText = `\u2713 Completed ${doneResult.task.id}: ${doneResult.task.title}`;
-          if (params.summary) doneText += `\n  Summary: ${params.summary}`;
-          if (doneResult.released.length > 0) doneText += `\n  Released: ${doneResult.released.join(", ")}`;
-
-          return {
-            content: [{ type: "text", text: doneText }],
-            details: doneResult,
-          };
-        }
-
-        // -- drop ---------------------------------------------
-        case "drop": {
-          if (!myId) throw new Error("Not registered. Use /amux new agent --join to set up, then /amux join.");
-          if (!params.id) throw new Error("Task ID is required for drop.");
-
-          const dropResult = await serviceDropTask(mySession, params.id, myId, myName || "agent");
-
-          let dropText = `\u2713 Dropped ${dropResult.task.id}: ${dropResult.task.title}  -- back in queue`;
-          if (dropResult.released.length > 0) dropText += `\n  Released: ${dropResult.released.join(", ")}`;
-
-          return {
-            content: [{ type: "text", text: dropText }],
-            details: dropResult,
-          };
-        }
-
-        // -- block --------------------------------------------
-        case "block": {
-          if (!myId) throw new Error("Not registered. Use /amux new agent --join to set up, then /amux join.");
-          if (!params.id) throw new Error("Task ID is required for block.");
-          if (!params.reason) throw new Error("Reason is required for block.");
-
-          const blockResult = await serviceBlockTask(mySession, params.id, myId, myName || "agent", params.reason);
-
-          return {
-            content: [{ type: "text", text: `\u26a0\ufe0f ${blockResult.task.id} blocked: ${params.reason}` }],
-            details: blockResult,
-          };
-        }
-
-        default:
-          throw new Error(`Unknown action: ${params.action}`);
-      }
-    },
-  });
+  // - Neutral-registry tools (all migrated) ---------------------
+  // All amux tools (amux_artifacts, amux_list, amux_project, amux_wow,
+  // amux_send, amux_broadcast, amux_discussion, amux_role, amux_reserve,
+  // amux_journal, amux_task) are registered via the neutral tool registry
+  // bridge (pi/tool-adapter.ts). See allAmuxTools() in core/tools; slash
+  // commands remain in this Pi adapter.
 
   // -- Commands -------------------------------------------------
 
@@ -981,25 +575,6 @@ export default function (pi: ExtensionAPI) {
 
     return { text, task, comments };
   }
-
-  async function notifyTaskCommentSubscribers(
-    session: string,
-    task: BacklogItem,
-    previousComments: TaskComment[],
-    comment: TaskComment,
-  ): Promise<string[]> {
-    if (!myId || !myName) return [];
-
-    const registry = await readRegistry(session);
-    const agents = Object.values(registry);
-    const plans = planTaskCommentNotifications({
-      task, comment, previousComments, agents,
-      senderId: myId, senderName: myName, senderRole: myRoleName, senderSession: session,
-    });
-    await deliverNotificationPlans(plans, { id: myId, name: myName, roleName: myRoleName, session }, comment.timestamp);
-    return plans.map((p) => p.recipientName);
-  }
-
   // -- progress handler --
 
   async function handleProgress(ctx: ExtensionContext): Promise<void> {

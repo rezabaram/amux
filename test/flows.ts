@@ -87,6 +87,7 @@ import {
   roleTool,
   reserveTool,
   journalTool,
+  taskTool,
   objectSchema,
   optionalBoolProp,
   type AmuxToolContext,
@@ -3131,6 +3132,142 @@ describe("Neutral discussion tool (SPEC-18 Slice 3)", () => {
       action: "start", topic: "Quiet", silent: true,
     });
     assert.ok(result.text.includes("Quiet"));
+  });
+});
+
+describe("Neutral task tool (SPEC-18 Slice 5)", () => {
+  const session = testSession("tasktool");
+  const devId = newAgentId();
+  const leadId = newAgentId();
+  const devCtx: AmuxToolContext = { session, agentId: devId, agentName: "Dev", roleName: "developer" };
+  const leadCtx: AmuxToolContext = { session, agentId: leadId, agentName: "Lead", roleName: "lead-architect" };
+  let taskId = "";
+  let assignedId = "";
+
+  before(async () => {
+    await registerAgent(session, {
+      id: devId, name: "Dev", session, role: "developer", roleName: "developer",
+      cwd: "/tmp", pid: 0, status: "online",
+      registeredAt: new Date().toISOString(), lastHeartbeat: new Date().toISOString(),
+    });
+    await registerAgent(session, {
+      id: leadId, name: "Lead", session, role: "lead", roleName: "lead-architect",
+      cwd: "/tmp", pid: 0, status: "online",
+      registeredAt: new Date().toISOString(), lastHeartbeat: new Date().toISOString(),
+    });
+  });
+  after(() => cleanupSession(session));
+
+  it("add creates a task with correct details", async () => {
+    const result = await taskTool.execute(leadCtx, {
+      action: "add", title: "Implement feature X", description: "Do the thing",
+    });
+    assert.ok(result.text.includes("Created"));
+    assert.ok(result.text.includes("Implement feature X"));
+    taskId = (result.details as { task: { id: string } }).task.id;
+    assert.ok(taskId.startsWith("TASK-"));
+  });
+
+  it("list shows the task in the backlog", async () => {
+    const result = await taskTool.execute(leadCtx, { action: "list" });
+    assert.ok(result.text.includes("Backlog (1 task"));
+    assert.ok(result.text.includes(taskId));
+    assert.ok(result.text.includes("Implement feature X"));
+  });
+
+  it("list with status filter returns empty for non-matching status", async () => {
+    const result = await taskTool.execute(leadCtx, { action: "list", status: "done" });
+    assert.equal(result.text, "No tasks found with status \"done\".");
+  });
+
+  it("assign delegates to a same-session agent", async () => {
+    const result = await taskTool.execute(leadCtx, { action: "assign", id: taskId, to: "Dev" });
+    assert.ok(result.text.includes("Assigned"));
+    assert.ok(result.text.includes("Dev"));
+    const task = (result.details as { tasks: { id: string; assignee: string; assigneeId: string }[] }).tasks[0];
+    assert.equal(task.assignee, "Dev");
+    assert.equal(task.assigneeId, devId);
+    assignedId = taskId;
+  });
+
+  it("assign rejects cross-session targets", async () => {
+    await assert.rejects(
+      taskTool.execute(leadCtx, { action: "assign", id: assignedId, to: "other/Dev" }),
+      /Cross-session task assignment is not supported/,
+    );
+  });
+
+  it("pick claims an assigned task and reports reservations", async () => {
+    const result = await taskTool.execute(devCtx, { action: "pick", id: assignedId, reason: "Starting now" });
+    assert.ok(result.text.includes("Picked"));
+    assert.ok(result.text.includes("Approach: Starting now"));
+    assert.equal((result.details as { task: { status: string } }).task.status, "in-progress");
+  });
+
+  it("comment adds a task-scoped comment with notification info", async () => {
+    const result = await taskTool.execute(devCtx, {
+      action: "comment", id: assignedId, content: "Found an edge case",
+    });
+    assert.ok(result.text.includes("Comment added"));
+    assert.ok(result.text.includes(assignedId));
+    assert.ok((result.details as { commentId: string }).commentId);
+  });
+
+  it("comment with silent:true skips notifications", async () => {
+    const result = await taskTool.execute(devCtx, {
+      action: "comment", id: assignedId, content: "quiet note", silent: true,
+    });
+    assert.ok(result.text.includes("Notifications skipped"));
+  });
+
+  it("review marks the task ready for review", async () => {
+    const result = await taskTool.execute(devCtx, {
+      action: "review", id: assignedId, summary: "Commit abc123, tests pass",
+    });
+    assert.ok(result.text.includes("Ready for review"));
+    assert.ok(result.text.includes("Handoff: Commit abc123"));
+    assert.equal((result.details as { task: { status: string } }).task.status, "review");
+  });
+
+  it("done completes the reviewed task", async () => {
+    const result = await taskTool.execute(leadCtx, {
+      action: "done", id: assignedId, summary: "Integrated",
+    });
+    assert.ok(result.text.includes("Completed"));
+    assert.equal((result.details as { task: { status: string } }).task.status, "done");
+  });
+
+  it("show renders task details and comments", async () => {
+    const result = await taskTool.execute(leadCtx, { action: "show", id: assignedId });
+    assert.ok(result.text.includes("Implement feature X"));
+    assert.ok(result.text.includes("Found an edge case") || result.text.includes("quiet note"));
+  });
+
+  it("block requires a reason", async () => {
+    const blockTask = await taskTool.execute(leadCtx, { action: "add", title: "Blocked task" });
+    const blockId = (blockTask.details as { task: { id: string } }).task.id;
+    await assert.rejects(
+      taskTool.execute(devCtx, { action: "block", id: blockId }),
+      /Reason is required for block/,
+    );
+    const result = await taskTool.execute(devCtx, { action: "block", id: blockId, reason: "waiting on API" });
+    assert.ok(result.text.includes("blocked: waiting on API"));
+  });
+
+  it("drop releases a task back to the queue", async () => {
+    const dropTask = await taskTool.execute(leadCtx, { action: "add", title: "To drop" });
+    const dropId = (dropTask.details as { task: { id: string } }).task.id;
+    await taskTool.execute(leadCtx, { action: "assign", id: dropId, to: "Dev" });
+    await taskTool.execute(devCtx, { action: "pick", id: dropId });
+    const result = await taskTool.execute(devCtx, { action: "drop", id: dropId });
+    assert.ok(result.text.includes("Dropped"));
+    assert.ok(result.text.includes("back in queue"));
+  });
+
+  it("summary renders a progress overview", async () => {
+    const result = await taskTool.execute(leadCtx, { action: "summary" });
+    assert.ok(result.text.length > 0);
+    assert.ok(result.text.includes("TASK-") || result.text.includes("task"));
   });
 });
 
