@@ -17,6 +17,10 @@ import {
   readSpecPreview,
 } from "./backlog.ts";
 import {
+  assertTaskTransitionAllowed,
+  assertTaskTransitionOwnership,
+} from "./task-state-machine.ts";
+import {
   reserve,
   release,
 } from "./reservations.ts";
@@ -99,11 +103,7 @@ export async function serviceAssignTasks(
   for (const taskId of taskIds) {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) throw new Error(`Task ${taskId} not found.`);
-    if (task.status === "in-progress") {
-      throw new Error(`${taskId} is actively being worked on by ${task.assignee}. Ask them to drop it first.`);
-    }
-    if (task.status === "review") throw new Error(`${taskId} is ready for review. Complete or pick it for changes instead.`);
-    if (task.status === "done") throw new Error(`${taskId} is already done.`);
+    assertTaskTransitionAllowed(task, "assign");
     toAssign.push(task);
   }
 
@@ -162,13 +162,8 @@ export async function servicePickTask(
     task = tasks.find((t) => t.id === taskId);
     if (!task) throw new Error(`Task ${taskId} not found.`);
 
-    if (task.status === "assigned" && task.assigneeId !== agentId) {
-      throw new Error(`${taskId} is assigned to ${task.assignee}, waiting for their response.`);
-    }
-    if (task.status === "in-progress") {
-      throw new Error(`${taskId} is already in progress${task.assignee ? ` by ${task.assignee}` : ""}.`);
-    }
-    if (task.status === "done") throw new Error(`${taskId} is already done.`);
+    assertTaskTransitionAllowed(task, "pick");
+    assertTaskTransitionOwnership(task, "pick", agentId);
 
     const unmet = unmetDependencies(task, tasks);
     if (unmet.length > 0) {
@@ -242,10 +237,8 @@ export async function serviceCompleteTask(
   const tasks = await readBacklog(session);
   const task = tasks.find((t) => t.id === taskId);
   if (!task) throw new Error(`Task ${taskId} not found.`);
-  if (task.status === "done") throw new Error(`${taskId} is already done.`);
-  if (task.assigneeId && task.assigneeId !== agentId && task.status !== "review") {
-    throw new Error(`${taskId} is assigned to ${task.assignee}. Only the assignee can mark it done.`);
-  }
+  assertTaskTransitionAllowed(task, "done");
+  assertTaskTransitionOwnership(task, "done", agentId);
 
   task.status = "done";
   task.completedAt = new Date().toISOString();
@@ -296,14 +289,8 @@ export async function serviceReviewTask(
   const tasks = await readBacklog(session);
   const task = tasks.find((t) => t.id === taskId);
   if (!task) throw new Error(`Task ${taskId} not found.`);
-  if (task.status === "done") throw new Error(`${taskId} is already done.`);
-  if (task.status === "review") throw new Error(`${taskId} is already ready for review.`);
-  if (task.status !== "in-progress") {
-    throw new Error(`${taskId} must be in progress before it can be marked ready for review.`);
-  }
-  if (task.assigneeId && task.assigneeId !== agentId) {
-    throw new Error(`${taskId} is assigned to ${task.assignee}. Only the assignee can mark it ready for review.`);
-  }
+  assertTaskTransitionAllowed(task, "review");
+  assertTaskTransitionOwnership(task, "review", agentId);
 
   task.status = "review";
   task.updatedAt = new Date().toISOString();
@@ -350,11 +337,8 @@ export async function serviceDropTask(
   const tasks = await readBacklog(session);
   const task = tasks.find((t) => t.id === taskId);
   if (!task) throw new Error(`Task ${taskId} not found.`);
-  if (task.status === "done") throw new Error(`${taskId} is already done.`);
-  if (task.status === "todo") throw new Error(`${taskId} is not assigned to anyone.`);
-  if (task.assigneeId && task.assigneeId !== agentId) {
-    throw new Error(`${taskId} is assigned to ${task.assignee}. Only the assignee can drop it.`);
-  }
+  assertTaskTransitionAllowed(task, "drop");
+  assertTaskTransitionOwnership(task, "drop", agentId);
 
   task.status = "todo";
   task.assignee = undefined;
@@ -404,10 +388,8 @@ export async function serviceBlockTask(
   const tasks = await readBacklog(session);
   const task = tasks.find((t) => t.id === taskId);
   if (!task) throw new Error(`Task ${taskId} not found.`);
-  if (task.status === "done") throw new Error(`${taskId} is already done.`);
-  if (task.assigneeId && task.assigneeId !== agentId) {
-    throw new Error(`${taskId} is assigned to ${task.assignee}. Only the assignee can block it.`);
-  }
+  assertTaskTransitionAllowed(task, "block");
+  assertTaskTransitionOwnership(task, "block", agentId);
 
   task.status = "blocked";
   task.blockedReason = reason;

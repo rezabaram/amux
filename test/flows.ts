@@ -216,6 +216,15 @@ import {
   serviceDropTask,
   serviceBlockTask,
 } from "../core/task-service.ts";
+import {
+  canTransition,
+  targetStatus,
+  getTaskTransitionDefinition,
+  assertTaskTransitionAllowed,
+  assertTaskTransitionOwnership,
+  type TaskState,
+  type TaskTransitionAction,
+} from "../core/task-state-machine.ts";
 
 // -- Test isolation --
 
@@ -2390,6 +2399,217 @@ describe("Task workflow service", () => {
     );
     const result = await serviceBlockTask(session, "TASK-02", devId, "Dev", "Waiting on API");
     assert.equal(result.task.status, "blocked");
+  });
+});
+
+describe("Task state machine (SPEC-19 slice 1)", () => {
+  // ── canTransition: allowed transitions ──
+  it("allows assign from todo, assigned, blocked", () => {
+    assert.ok(canTransition("todo", "assign"));
+    assert.ok(canTransition("assigned", "assign"));
+    assert.ok(canTransition("blocked", "assign"));
+  });
+
+  it("rejects assign from in-progress, review, done", () => {
+    assert.ok(!canTransition("in-progress", "assign"));
+    assert.ok(!canTransition("review", "assign"));
+    assert.ok(!canTransition("done", "assign"));
+  });
+
+  it("allows pick from todo, assigned, blocked", () => {
+    assert.ok(canTransition("todo", "pick"));
+    assert.ok(canTransition("assigned", "pick"));
+    assert.ok(canTransition("blocked", "pick"));
+  });
+
+  it("rejects pick from in-progress and done, but allows review for changes", () => {
+    assert.ok(!canTransition("in-progress", "pick"));
+    assert.ok(canTransition("review", "pick"));
+    assert.ok(!canTransition("done", "pick"));
+  });
+
+  it("allows review only from in-progress", () => {
+    assert.ok(canTransition("in-progress", "review"));
+    assert.ok(!canTransition("todo", "review"));
+    assert.ok(!canTransition("assigned", "review"));
+    assert.ok(!canTransition("review", "review"));
+    assert.ok(!canTransition("done", "review"));
+  });
+
+  it("allows done from any non-done active state", () => {
+    assert.ok(canTransition("todo", "done"));
+    assert.ok(canTransition("assigned", "done"));
+    assert.ok(canTransition("in-progress", "done"));
+    assert.ok(canTransition("review", "done"));
+    assert.ok(canTransition("blocked", "done"));
+    assert.ok(!canTransition("done", "done"));
+  });
+
+  it("allows drop from assigned, in-progress, review, blocked", () => {
+    assert.ok(canTransition("assigned", "drop"));
+    assert.ok(canTransition("in-progress", "drop"));
+    assert.ok(canTransition("review", "drop"));
+    assert.ok(canTransition("blocked", "drop"));
+    assert.ok(!canTransition("todo", "drop"));
+    assert.ok(!canTransition("done", "drop"));
+  });
+
+  it("allows block from any non-done active state, including re-block", () => {
+    assert.ok(canTransition("todo", "block"));
+    assert.ok(canTransition("assigned", "block"));
+    assert.ok(canTransition("in-progress", "block"));
+    assert.ok(canTransition("review", "block"));
+    assert.ok(canTransition("blocked", "block"));
+    assert.ok(!canTransition("done", "block"));
+  });
+
+  // ── targetStatus ──
+  it("targetStatus returns correct destination", () => {
+    assert.equal(targetStatus("todo", "assign"), "assigned");
+    assert.equal(targetStatus("assigned", "pick"), "in-progress");
+    assert.equal(targetStatus("review", "pick"), "in-progress");
+    assert.equal(targetStatus("in-progress", "review"), "review");
+    assert.equal(targetStatus("in-progress", "done"), "done");
+    assert.equal(targetStatus("review", "done"), "done");
+    assert.equal(targetStatus("in-progress", "drop"), "todo");
+    assert.equal(targetStatus("in-progress", "block"), "blocked");
+  });
+
+  it("non-status transitions return 'same' or 'archive'", () => {
+    assert.equal(targetStatus("in-progress", "comment"), "same");
+    assert.equal(targetStatus("todo", "plan"), "same");
+    assert.equal(targetStatus("done", "archive"), "archive");
+  });
+
+  // ── getTaskTransitionDefinition ──
+  it("getTaskTransitionDefinition returns definition or null", () => {
+    const def = getTaskTransitionDefinition("done", "review");
+    assert.ok(def);
+    assert.equal(def!.ownership, "assignee-or-reviewer");
+    assert.equal(getTaskTransitionDefinition("done", "done"), null);
+  });
+
+  // ── assertTaskTransitionAllowed ──
+  it("assertTaskTransitionAllowed throws for disallowed transitions", () => {
+    const doneTask = { id: "TASK-99", status: "done" } as any;
+    assert.throws(
+      () => assertTaskTransitionAllowed(doneTask, "assign"),
+      /already done/,
+    );
+    // Valid transition does NOT throw
+    const ipTask = { id: "TASK-98", status: "in-progress" } as any;
+    assertTaskTransitionAllowed(ipTask, "review"); // no throw = pass
+  });
+
+  it("assertTaskTransitionAllowed preserves contextual error messages", () => {
+    const ipTask = { id: "TASK-01", status: "in-progress", assignee: "Dev" } as any;
+    assert.throws(
+      () => assertTaskTransitionAllowed(ipTask, "assign"),
+      /actively being worked on by Dev/,
+    );
+    const reviewTask = { id: "TASK-02", status: "review" } as any;
+    assert.throws(
+      () => assertTaskTransitionAllowed(reviewTask, "assign"),
+      /ready for review/,
+    );
+    const todoTask = { id: "TASK-03", status: "todo" } as any;
+    assert.throws(
+      () => assertTaskTransitionAllowed(todoTask, "drop"),
+      /not assigned to anyone/,
+    );
+  });
+
+  // ── assertTaskTransitionOwnership ──
+  it("reviewer can complete from review state (assignee-or-reviewer)", () => {
+    const reviewTask = {
+      id: "TASK-01", status: "review",
+      assigneeId: "dev-1", assignee: "Dev",
+    } as any;
+    // Non-assignee (reviewer) completes from review — should NOT throw
+    assertTaskTransitionOwnership(reviewTask, "done", "reviewer-1");
+  });
+
+  it("only assignee can complete from in-progress", () => {
+    const ipTask = {
+      id: "TASK-02", status: "in-progress",
+      assigneeId: "dev-1", assignee: "Dev",
+    } as any;
+    assert.throws(
+      () => assertTaskTransitionOwnership(ipTask, "done", "other-1"),
+      /Only the assignee can mark it done/,
+    );
+    // Assignee can complete
+    assertTaskTransitionOwnership(ipTask, "done", "dev-1");
+  });
+
+  it("pick ownership rejects non-assignee for assigned tasks", () => {
+    const assignedTask = {
+      id: "TASK-03", status: "assigned",
+      assigneeId: "dev-1", assignee: "Dev",
+    } as any;
+    assert.throws(
+      () => assertTaskTransitionOwnership(assignedTask, "pick", "other-1"),
+      /waiting for their response/,
+    );
+    // Assignee can pick
+    assertTaskTransitionOwnership(assignedTask, "pick", "dev-1");
+  });
+
+  it("pick ownership is open for todo, blocked, and review tasks", () => {
+    const todoTask = { id: "TASK-04", status: "todo" } as any;
+    assertTaskTransitionOwnership(todoTask, "pick", "anyone-1");
+    const blockedTask = { id: "TASK-05", status: "blocked" } as any;
+    assertTaskTransitionOwnership(blockedTask, "pick", "anyone-1");
+    const reviewTask = { id: "TASK-05B", status: "review", assigneeId: "dev-1", assignee: "Dev" } as any;
+    assertTaskTransitionOwnership(reviewTask, "pick", "reviewer-1");
+  });
+
+  it("review/drop/block ownership rejects non-assignee", () => {
+    const ipTask = {
+      id: "TASK-06", status: "in-progress",
+      assigneeId: "dev-1", assignee: "Dev",
+    } as any;
+    assert.throws(
+      () => assertTaskTransitionOwnership(ipTask, "review", "other-1"),
+      /Only the assignee can mark it ready for review/,
+    );
+    assert.throws(
+      () => assertTaskTransitionOwnership(ipTask, "drop", "other-1"),
+      /Only the assignee can drop it/,
+    );
+    assert.throws(
+      () => assertTaskTransitionOwnership(ipTask, "block", "other-1"),
+      /Only the assignee can block it/,
+    );
+  });
+
+  it("assign has no ownership restriction", () => {
+    const todoTask = { id: "TASK-07", status: "todo" } as any;
+    assertTaskTransitionOwnership(todoTask, "assign", "anyone-1");
+  });
+
+  it("direct done preserves simple workflows while respecting assignees", () => {
+    const todoTask = { id: "TASK-07A", status: "todo" } as any;
+    assertTaskTransitionAllowed(todoTask, "done");
+    assertTaskTransitionOwnership(todoTask, "done", "anyone-1");
+
+    const assignedTask = {
+      id: "TASK-07B", status: "assigned",
+      assigneeId: "dev-1", assignee: "Dev",
+    } as any;
+    assertTaskTransitionAllowed(assignedTask, "done");
+    assertTaskTransitionOwnership(assignedTask, "done", "dev-1");
+    assert.throws(
+      () => assertTaskTransitionOwnership(assignedTask, "done", "other-1"),
+      /Only the assignee can mark it done/,
+    );
+  });
+
+  it("unassigned tasks allow any actor for assignee-gated transitions", () => {
+    const todoTask = { id: "TASK-08", status: "todo" } as any;
+    // block from todo with no assignee — no ownership check fires
+    assertTaskTransitionAllowed(todoTask, "block");
+    assertTaskTransitionOwnership(todoTask, "block", "anyone-1");
   });
 });
 describe("CLI read-only commands", () => {

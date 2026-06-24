@@ -16,6 +16,7 @@ export * from "./task-comments";
 export * from "./project-context";
 export * from "./renderers";
 export * from "./task-service";
+export * from "./task-state-machine";
 export * from "./roles";
 export * from "./prompt-assembly";
 export * from "./notification-service";
