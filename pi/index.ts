@@ -47,18 +47,13 @@ import {
   readRoles,
   getRole,
   addRole,
-  removeRole,
   readSessionConfig,
   writeSessionConfig,
 } from "../core/registry";
 import {
   resolveRoleInstructions,
-  listRoleTemplates,
-  listTeamTemplates,
   getTeamTemplate,
-  applyTeamTemplate,
   readRoleTemplate,
-  roleProfileFullPath,
 } from "../core/roles";
 import {
   assembleAgentPrompt,
@@ -88,13 +83,9 @@ import {
   type InboxMessage,
 } from "../core/messaging";
 import {
-  reserve,
-  release,
-  getReservations,
   checkConflict,
   clearStaleReservations,
   toWorkspaceRelative,
-  formatReservationAge,
   formatReservationConflict,
   reservationTaskId,
 } from "../core/reservations";
@@ -108,10 +99,7 @@ import {
   archiveDoneTasks,
 } from "../core/backlog";
 import {
-  appendEntry as addJournalEntry,
-  readEntries as readJournalEntries,
   getRecentEntries,
-  formatEntry as formatJournalEntry,
 } from "../core/journal";
 import {
   appendTaskComment,
@@ -197,17 +185,6 @@ export default function (pi: ExtensionAPI) {
       text += `\n\nResponse requested. Reply with amux_send to ${formatAddress(msg.fromSession, msg.fromName)} and include inReplyTo: "${msg.id}".`;
     }
     return text;
-  }
-
-  /** Check if a role name matches a built-in role template. */
-  function isBuiltinRole(name: string): boolean {
-    return BUILTIN_ROLES.some((r) => r.name === name);
-  }
-
-  /** Get all agents (any status) that reference a given role. */
-  async function getRoleUsage(session: string, roleName: string): Promise<AgentInfo[]> {
-    const registry = await readRegistry(session);
-    return Object.values(registry).filter((a) => a.roleName === roleName);
   }
 
   // -- Agent Startup/Shutdown Helpers ---------------------------
@@ -492,271 +469,12 @@ export default function (pi: ExtensionAPI) {
     });
   });
 
-  // - amux_role -------------------------------------------------
-
-  pi.registerTool({
-    name: "amux_role",
-    label: "Manage Roles",
-    description:
-      "Add, list, remove, or apply role definitions for the current amux session. " +
-      "Roles define a name and instructions that shape an agent's behavior. " +
-      "Use templates/apply-template for bundled role profiles and team setups. " +
-      "Agents join projects with /amux join.",
-    promptSnippet: "Manage amux roles  -- add, list, remove, templates, apply-template, show, path",
-    promptGuidelines: [
-      "Use amux_role apply-template to quickly set up a standard team (e.g. core-team).",
-      "Use amux_role templates to see bundled role profiles and team templates.",
-      "Applying a team template copies role profiles and registers roles  -- it does not create agents.",
-      "Each amux_role has a name and instructions that guide the agent's behavior.",
-    ],
-    parameters: Type.Object({
-      action: StringEnum(["add", "list", "remove", "templates", "apply-template", "show", "path"] as const),
-      name: Type.Optional(
-        Type.String({ description: 'Role name (required for "add", "remove", "show", "path")' })
-      ),
-      instructions: Type.Optional(
-        Type.String({
-          description:
-            'Instructions for the role  -- what the agent should do, focus on, and how to behave (required for "add")',
-        })
-      ),
-      template: Type.Optional(
-        Type.String({ description: 'Team template name (required for "apply-template", e.g. "core-team")' })
-      ),
-    }),
-
-    async execute(_id, params) {
-      if (!mySession) throw new Error("amux session not active");
-
-      switch (params.action) {
-        case "add": {
-          if (!params.name) throw new Error("Role name is required for add.");
-          if (!params.instructions) throw new Error("Instructions are required for add.");
-          await addRole(mySession, { name: params.name, instructions: params.instructions });
-          return {
-            content: [{ type: "text", text: `Role "${params.name}" added. Agents can join with: /amux join` }],
-            details: { role: { name: params.name, instructions: params.instructions } },
-          };
-        }
-        case "list": {
-          const roles = await readRoles(mySession);
-          const entries = Object.values(roles);
-          if (entries.length === 0) {
-            return {
-              content: [{ type: "text", text: "No roles defined. Use amux_role with action=add to create one." }],
-              details: { roles: [] },
-            };
-          }
-          const registry = await readRegistry(mySession);
-          const allAgents = Object.values(registry);
-          const lines = entries.map((r) => {
-            const usedBy = allAgents.filter((a) => a.roleName === r.name).map((a) => a.name);
-            const builtinTag = isBuiltinRole(r.name) ? "built-in" : "custom";
-            const usageTag = usedBy.length > 0 ? `used by: ${usedBy.join(", ")}` : "unused";
-            const truncInstr = r.instructions.slice(0, 100) + (r.instructions.length > 100 ? "…" : "");
-            return `- ${r.name} [${builtinTag}, ${usageTag}]: ${truncInstr}`;
-          });
-          return { content: [{ type: "text", text: lines.join("\n") }], details: { roles: entries } };
-        }
-        case "remove": {
-          if (!params.name) throw new Error("Role name is required for remove.");
-
-          // Rule 1: Built-in roles can't be deleted
-          if (isBuiltinRole(params.name)) {
-            throw new Error(
-              `Role "${params.name}" is a built-in role and cannot be deleted. ` +
-              `Use action "add" to customize its instructions instead.`
-            );
-          }
-
-          // Rule 2: Can't delete roles in use by agents
-          const usedBy = await getRoleUsage(mySession, params.name);
-          if (usedBy.length > 0) {
-            const names = usedBy.map((a) => a.name).join(", ");
-            throw new Error(
-              `Role "${params.name}" is used by ${names}. Reassign them first.`
-            );
-          }
-
-          const removed = await removeRole(mySession, params.name);
-          if (!removed) throw new Error(`Role "${params.name}" not found.`);
-          return { content: [{ type: "text", text: `Role "${params.name}" removed.` }], details: {} };
-        }
-        case "templates": {
-          const roleTemplates = listRoleTemplates();
-          const teamTemplates = listTeamTemplates();
-          let text = "Bundled role profiles:\n";
-          text += roleTemplates.map((t) => `  - ${t}`).join("\n") || "  (none)";
-          text += "\n\nTeam templates:\n";
-          text += teamTemplates
-            .map((t) => `  - ${t.name}: ${t.description} [${t.roles.map((r) => r.name).join(", ")}]`)
-            .join("\n") || "  (none)";
-          text += "\n\nApply a team: amux_role apply-template <name>";
-          return { content: [{ type: "text", text }], details: { roleTemplates, teamTemplates } };
-        }
-        case "apply-template": {
-          if (!params.template) throw new Error("Template name is required for apply-template.");
-          const result = await applyTeamTemplate(mySession, params.template);
-          if (!result) {
-            const available = listTeamTemplates().map((t) => t.name).join(", ");
-            throw new Error(`Team template "${params.template}" not found. Available: ${available || "none"}`);
-          }
-          const agentHints = result.template.roles
-            .filter((r) => r.agentName)
-            .map((r) => `  ${r.name} \u2192 suggested agent "${r.agentName}" (workspace: ${r.workspace || "none"})`)
-            .join("\n");
-          let text = `Applied team template "${result.template.name}".\nRoles registered: ${result.applied.join(", ")}.`;
-          if (agentHints) {
-            text += `\n\nSuggested agents (create separately via /amux new agent):\n${agentHints}`;
-          }
-          return { content: [{ type: "text", text }], details: result };
-        }
-        case "show": {
-          if (!params.name) throw new Error("Role name is required for show.");
-          const role = await getRole(mySession, params.name);
-          if (!role) throw new Error(`Role "${params.name}" not found.`);
-          const resolved = resolveRoleInstructions(mySession, role);
-          let text = `# ${role.name}`;
-          if (role.profilePath) text += `\nProfile: ${role.profilePath}`;
-          if (role.templateName) text += `\nTemplate: ${role.templateName}`;
-          text += `\n\n${resolved}`;
-          return { content: [{ type: "text", text }], details: { role } };
-        }
-        case "path": {
-          if (!params.name) throw new Error("Role name is required for path.");
-          const role = await getRole(mySession, params.name);
-          if (!role) throw new Error(`Role "${params.name}" not found.`);
-          if (!role.profilePath) {
-            return {
-              content: [{ type: "text", text: `Role "${params.name}" uses inline instructions and has no profile file.` }],
-              details: { role },
-            };
-          }
-          const fullPath = roleProfileFullPath(mySession, role.profilePath);
-          return { content: [{ type: "text", text: fullPath }], details: { path: fullPath, profilePath: role.profilePath } };
-        }
-        default:
-          throw new Error(`Unknown action: ${params.action}`);
-      }
-    },
-  });
-
   // - Neutral-registry tools (migrated) --------------------------
   // amux_artifacts, amux_list, amux_project, amux_wow, amux_send,
-  // amux_broadcast, amux_discussion are registered via the neutral tool
-  // registry bridge (pi/tool-adapter.ts). See allAmuxTools() in core/tools;
-  // slash commands remain in this Pi adapter, only tool definitions/handlers
-  // moved to core. Other tools below remain inline pending SPEC-18 slices.
-
-  // - amux_reserve ----------------------------------------------
-
-  pi.registerTool({
-    name: "amux_reserve",
-    label: "File Reservations",
-    description:
-      "Manage file/directory reservations to prevent conflicts. " +
-      "Actions: claim (reserve paths), release (free paths), list (show all). " +
-      "Trailing slash = directory prefix, no slash = exact file.",
-    promptSnippet: "Manage file reservations  -- claim, release, list",
-    promptGuidelines: [
-      "Use amux_reserve with action 'claim' before editing files other agents might work on.",
-      "Trailing slash = directory prefix (e.g., 'src/auth/'), no slash = exact file.",
-      "Release reservations with action 'release' when done editing.",
-    ],
-    parameters: Type.Object({
-      action: StringEnum(["claim", "release", "list"] as const),
-      paths: Type.Optional(
-        Type.Array(Type.String({ description: "Paths to claim or release (trailing slash = directory prefix)" }))
-      ),
-      reason: Type.Optional(
-        Type.String({ description: "Why you're claiming these paths (shown to other agents)" })
-      ),
-    }),
-
-    async execute(_id, params) {
-      if (!mySession) throw new Error("amux session not active");
-
-      switch (params.action) {
-        case "claim": {
-          if (!myId || !myName) throw new Error("Not registered. Use /amux new agent --join to set up, then /amux join.");
-          if (!params.paths?.length) throw new Error("Paths are required for claim.");
-
-          const online = await getOnlineAgents(mySession).catch(() => [] as AgentInfo[]);
-          const onlineIds = online.map((a) => a.id);
-
-          const reserved = await reserve(mySession, params.paths, myId, myName, params.reason, onlineIds);
-
-          const reasonNote = params.reason ? ` (${params.reason})` : "";
-          return {
-            content: [{
-              type: "text",
-              text: `Reserved ${reserved.length} path(s)${reasonNote}:\n${reserved.map((p) => `  ✓ ${p}`).join("\n")}`,
-            }],
-            details: { reserved, reason: params.reason },
-          };
-        }
-
-        case "release": {
-          if (!myId) throw new Error("Not registered. Use /amux new agent --join to set up, then /amux join.");
-          if (!params.paths?.length) throw new Error("Paths are required for release.");
-
-          const released = await release(mySession, params.paths, myId);
-
-          if (released.length === 0) {
-            return {
-              content: [{ type: "text", text: "No matching reservations found to release." }],
-              details: { released: [] },
-            };
-          }
-          return {
-            content: [{
-              type: "text",
-              text: `Released ${released.length} reservation(s):\n${released.map((p) => `  ✓ ${p}`).join("\n")}`,
-            }],
-            details: { released },
-          };
-        }
-
-        case "list": {
-          const reservations = await getReservations(mySession);
-          const entries = Object.entries(reservations);
-
-          if (entries.length === 0) {
-            return {
-              content: [{ type: "text", text: "No active reservations." }],
-              details: { reservations: {} },
-            };
-          }
-
-          const online = await getOnlineAgents(mySession).catch(() => [] as AgentInfo[]);
-          const onlineIds = new Set(online.map((a) => a.id));
-
-          const backlog = await readBacklog(mySession);
-          const lines = entries.map(([path, res]) => {
-            const duration = formatReservationAge(res.since);
-            const reasonStr = res.reason ? `  -- ${res.reason}` : "";
-            const taskId = reservationTaskId(res);
-            const taskStr = taskId ? ` [${taskId}]` : "";
-            const stale = !onlineIds.has(res.agentId);
-            const staleStr = stale ? " [stale -- agent offline]" : "";
-            const work = renderAgentWorkState(res.agentId, backlog);
-            const workStr = work ? ` (${work})` : ` (${duration})`;
-            const isMe = res.agentId === myId;
-            const marker = isMe ? " (you)" : "";
-            return `  ${path}  →  ${res.agent}${marker}${taskStr}${reasonStr}${workStr}${staleStr}`;
-          });
-
-          return {
-            content: [{ type: "text", text: `Active reservations:\n${lines.join("\n")}` }],
-            details: { reservations },
-          };
-        }
-
-        default:
-          throw new Error(`Unknown action: ${params.action}`);
-      }
-    },
-  });
+  // amux_broadcast, amux_discussion, amux_role, amux_reserve, and
+  // amux_journal are registered via the neutral tool registry bridge
+  // (pi/tool-adapter.ts). See allAmuxTools() in core/tools; slash commands
+  // remain in this Pi adapter. amux_task remains inline pending SPEC-18 Slice 5.
 
   // - amux_task -------------------------------------------------
 
@@ -1129,95 +847,6 @@ export default function (pi: ExtensionAPI) {
           return {
             content: [{ type: "text", text: `\u26a0\ufe0f ${blockResult.task.id} blocked: ${params.reason}` }],
             details: blockResult,
-          };
-        }
-
-        default:
-          throw new Error(`Unknown action: ${params.action}`);
-      }
-    },
-  });
-
-  // - amux_journal --------------------------------------------
-
-  pi.registerTool({
-    name: "amux_journal",
-    label: "Journal",
-    description:
-      "Append-only journal for recording decisions, learnings, and progress. " +
-      "Actions: add (record an entry), list (show recent entries). " +
-      "Recent entries are automatically injected into the system prompt.",
-    promptSnippet: "Record and review decisions, learnings, and progress",
-    promptGuidelines: [
-      "Use amux_journal to record important decisions, things you've learned, and progress updates.",
-      "Journal entries are shared across all agents and persist across sessions.",
-      "Recent entries are automatically included in the system prompt for context.",
-      "When you discover ways to improve team alignment, code quality, or ways of working, capture them as a 'learning'  -- these shape how the team collaborates and raises the quality bar.",
-    ],
-    parameters: Type.Object({
-      action: StringEnum(["add", "list"] as const),
-      type: Type.Optional(
-        StringEnum(["decision", "learning", "progress"] as const)
-      ),
-      content: Type.Optional(
-        Type.String({ description: "Journal entry content (required for add)" })
-      ),
-      context: Type.Optional(
-        Type.String({ description: "Optional context (e.g., task ID, topic)" })
-      ),
-      limit: Type.Optional(
-        Type.Number({ description: "Number of entries to show (default 20, for list)" })
-      ),
-    }),
-
-    async execute(_id, params) {
-      if (!mySession) throw new Error("amux session not active");
-
-      switch (params.action) {
-        case "add": {
-          if (!myId || !myName) throw new Error("Not registered. Use /amux new agent --join to set up, then /amux join.");
-          if (!params.type) throw new Error("Entry type is required for add (decision, learning, or progress).");
-          if (!params.content) throw new Error("Content is required for add.");
-
-          const entry = {
-            timestamp: new Date().toISOString(),
-            agent: myName,
-            agentId: myId,
-            type: params.type,
-            content: params.content,
-            context: params.context,
-          };
-          addJournalEntry(mySession, entry);
-
-          return {
-            content: [{
-              type: "text",
-              text: `✓ Journal entry added: ${formatJournalEntry(entry)}`,
-            }],
-            details: { entry },
-          };
-        }
-
-        case "list": {
-          const limit = params.limit ?? 20;
-          const entries = readJournalEntries(mySession, limit, params.type);
-
-          if (entries.length === 0) {
-            const typeNote = params.type ? ` of type "${params.type}"` : "";
-            return {
-              content: [{ type: "text", text: `No journal entries found${typeNote}.` }],
-              details: { entries: [] },
-            };
-          }
-
-          const lines = entries.map((e) => `  ${formatJournalEntry(e)}`);
-          const typeNote = params.type ? ` (${params.type})` : "";
-          return {
-            content: [{
-              type: "text",
-              text: `Journal${typeNote} (${entries.length} entries):\n\n${lines.join("\n")}`,
-            }],
-            details: { entries },
           };
         }
 

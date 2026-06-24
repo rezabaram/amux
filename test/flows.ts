@@ -84,6 +84,9 @@ import {
   sendTool,
   broadcastTool,
   discussionTool,
+  roleTool,
+  reserveTool,
+  journalTool,
   objectSchema,
   optionalBoolProp,
   type AmuxToolContext,
@@ -2715,11 +2718,17 @@ describe("Neutral tool registry (SPEC-18)", () => {
     assert.ok(names.includes("amux_send"));
     assert.ok(names.includes("amux_broadcast"));
     assert.ok(names.includes("amux_discussion"));
+    assert.ok(names.includes("amux_role"));
+    assert.ok(names.includes("amux_reserve"));
+    assert.ok(names.includes("amux_journal"));
     assert.equal(getAmuxTool("amux_list")!.name, "amux_list");
     assert.equal(getAmuxTool("amux_project")!.name, "amux_project");
     assert.equal(getAmuxTool("amux_wow")!.name, "amux_wow");
     assert.equal(getAmuxTool("amux_send")!.name, "amux_send");
     assert.equal(getAmuxTool("amux_discussion")!.name, "amux_discussion");
+    assert.equal(getAmuxTool("amux_role")!.name, "amux_role");
+    assert.equal(getAmuxTool("amux_reserve")!.name, "amux_reserve");
+    assert.equal(getAmuxTool("amux_journal")!.name, "amux_journal");
     assert.equal(getAmuxTool("nonexistent"), undefined);
   });
 
@@ -2777,6 +2786,22 @@ describe("Neutral tool registry (SPEC-18)", () => {
     assert.equal(discussionTool.inputSchema.properties.participants.type, "array");
     assert.equal(discussionTool.inputSchema.properties.participants.items.type, "string");
     assert.ok(discussionTool.promptGuidelines?.some((g) => g.includes("retros, brainstorms")));
+
+    // Coordination tools (Slice 4)
+    assert.equal(roleTool.name, "amux_role");
+    assert.deepEqual(roleTool.inputSchema.required, ["action"]);
+    assert.deepEqual(roleTool.inputSchema.properties.action.enum, ["add", "list", "remove", "templates", "apply-template", "show", "path"]);
+    assert.ok(roleTool.promptGuidelines?.some((g) => g.includes("apply-template")));
+
+    assert.equal(reserveTool.name, "amux_reserve");
+    assert.deepEqual(reserveTool.inputSchema.required, ["action"]);
+    assert.deepEqual(reserveTool.inputSchema.properties.action.enum, ["claim", "release", "list"]);
+    assert.equal(reserveTool.inputSchema.properties.paths.type, "array");
+
+    assert.equal(journalTool.name, "amux_journal");
+    assert.deepEqual(journalTool.inputSchema.required, ["action"]);
+    assert.deepEqual(journalTool.inputSchema.properties.action.enum, ["add", "list"]);
+    assert.deepEqual(journalTool.inputSchema.properties.type.enum, ["decision", "learning", "progress"]);
   });
 });
 
@@ -2883,6 +2908,53 @@ describe("Neutral tool handlers (SPEC-18 pilot)", () => {
     const clear = await wowTool.execute(ctx, { action: "clear" });
     assert.equal(clear.text, "Ways of Working cleared. Changes affect future agent prompts.");
     assert.equal((clear.details as { content: string }).content, "");
+  });
+
+  it("amux_role neutral handler preserves add/list/show/path/remove behavior", async () => {
+    const add = await roleTool.execute(ctx, { action: "add", name: "observer", instructions: "Watch for drift" });
+    assert.equal(add.text, 'Role "observer" added. Agents can join with: /amux join');
+
+    const list = await roleTool.execute(ctx, { action: "list" });
+    assert.ok(list.text.includes("observer"));
+    assert.ok(list.text.includes("unused"));
+
+    const show = await roleTool.execute(ctx, { action: "show", name: "observer" });
+    assert.ok(show.text.startsWith("# observer"));
+    assert.ok(show.text.includes("Watch for drift"));
+
+    const pathResult = await roleTool.execute(ctx, { action: "path", name: "observer" });
+    assert.equal(pathResult.text, 'Role "observer" uses inline instructions and has no profile file.');
+
+    const remove = await roleTool.execute(ctx, { action: "remove", name: "observer" });
+    assert.equal(remove.text, 'Role "observer" removed.');
+  });
+
+  it("amux_reserve neutral handler preserves claim/list/release behavior", async () => {
+    const claim = await reserveTool.execute(ctx, { action: "claim", paths: ["src/"], reason: "TASK-99" });
+    assert.ok(claim.text.includes("Reserved 1 path(s) (TASK-99):"));
+    assert.ok(claim.text.includes("✓ src/"));
+
+    const list = await reserveTool.execute(ctx, { action: "list" });
+    assert.ok(list.text.includes("Active reservations:"));
+    assert.ok(list.text.includes("src/  →  NeutralAgent (you) [TASK-99]"));
+
+    const releaseResult = await reserveTool.execute(ctx, { action: "release", paths: ["src/"] });
+    assert.equal(releaseResult.text, "Released 1 reservation(s):\n  ✓ src/");
+  });
+
+  it("amux_journal neutral handler preserves add/list behavior", async () => {
+    const add = await journalTool.execute(ctx, {
+      action: "add",
+      type: "decision",
+      content: "Prefer neutral tool modules",
+      context: "SPEC-18",
+    });
+    assert.ok(add.text.includes("✓ Journal entry added:"));
+    assert.ok(add.text.includes("Prefer neutral tool modules"));
+
+    const list = await journalTool.execute(ctx, { action: "list", type: "decision", limit: 5 });
+    assert.ok(list.text.includes("Journal (decision)"));
+    assert.ok(list.text.includes("Prefer neutral tool modules"));
   });
 });
 
