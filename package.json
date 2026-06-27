@@ -15,11 +15,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/amutix/amux.git"
+    "url": "https://github.com/amutix/amutix.git"
   },
-  "homepage": "https://github.com/amutix/amux",
+  "homepage": "https://github.com/amutix/amutix",
   "bugs": {
-    "url": "https://github.com/amutix/amux/issues"
+    "url": "https://github.com/amutix/amutix/issues"
   },
   "author": "rezabaram",
   "license": "MIT",

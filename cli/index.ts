@@ -81,9 +81,9 @@ Options:
   --session, -s <name>  Session/project name (auto-detected if only one)
 
 For full interactive workflows (create, assign, pick):
-  pi install git:github.com/amutix/amux
+  pi install git:github.com/amutix/amutix
 
-Documentation: https://github.com/amutix/amux`);
+Documentation: https://github.com/amutix/amutix`);
 }
 
 // ─── Commands ────────────────────────────────────────────────

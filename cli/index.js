@@ -81,7 +81,7 @@ function die(message) {
 }
 
 function printHelp() {
-  console.log(`amutix — Coordination CLI for AI agent teams (read-only)\n\nUsage: amutix <command> [--session <name>]\n\nCommands:\n  work                  Project progress overview\n  work show <ITEM-ID>   Item details with comments and spec preview\n  team                  Agents and availability\n  project               Project vision/WoW/role overview\n  list                  Backlog listing\n  task list             Backlog listing (explicit task namespace)\n  progress              Alias for work\n  show <ITEM-ID>        Alias for work show\n  status                Alias for team\n  help                  Show this help\n\nOptions:\n  --session, -s <name>  Session/project name (auto-detected if only one)\n\nFor full interactive workflows: use the Pi extension.\nDocumentation: https://github.com/amutix/amux`);
+  console.log(`amutix — Coordination CLI for AI agent teams (read-only)\n\nUsage: amutix <command> [--session <name>]\n\nCommands:\n  work                  Project progress overview\n  work show <ITEM-ID>   Item details with comments and spec preview\n  team                  Agents and availability\n  project               Project vision/WoW/role overview\n  list                  Backlog listing\n  task list             Backlog listing (explicit task namespace)\n  progress              Alias for work\n  show <ITEM-ID>        Alias for work show\n  status                Alias for team\n  help                  Show this help\n\nOptions:\n  --session, -s <name>  Session/project name (auto-detected if only one)\n\nFor full interactive workflows: use the Pi extension.\nDocumentation: https://github.com/amutix/amutix`);
 }
 
 function readBacklog(session) {
