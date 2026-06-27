@@ -1,37 +1,37 @@
 # Solo vs Amux Benchmark
 
-Compare solo-agent and amux-team workflows on quality-per-token for realistic multi-file tasks.
+Compare solo-agent and amutix-team workflows on quality-per-token for realistic multi-file tasks.
 
 ## Quick Start
 
 ```bash
 # 1. Prepare workspace
-benchmarks/solo-vs-amux/bench.sh prepare
+benchmarks/solo-vs-amutix/bench.sh prepare
 
 # 2. Set up a solo run for task 1, then run the generated script
-benchmarks/solo-vs-amux/bench.sh run-solo 1
-/tmp/amux-bench/solo-task-1/run-solo.sh
+benchmarks/solo-vs-amutix/bench.sh run-solo 1
+/tmp/amutix-bench/solo-task-1/run-solo.sh
 
-# 3. Set up an amux-style run for task 1, then run the generated scripts in order
-benchmarks/solo-vs-amux/bench.sh run-amux 1
-/tmp/amux-bench/amux-task-1/run-architect.sh
-/tmp/amux-bench/amux-task-1/run-developer.sh
-/tmp/amux-bench/amux-task-1/run-reviewer.sh
+# 3. Set up an amutix-style run for task 1, then run the generated scripts in order
+benchmarks/solo-vs-amutix/bench.sh run-amutix 1
+/tmp/amutix-bench/amutix-task-1/run-architect.sh
+/tmp/amutix-bench/amutix-task-1/run-developer.sh
+/tmp/amutix-bench/amutix-task-1/run-reviewer.sh
 
 # 4. If a run gets stuck, stop benchmark processes under BENCH_ROOT
-benchmarks/solo-vs-amux/bench.sh stop
+benchmarks/solo-vs-amutix/bench.sh stop
 
 # 5. After running each arm, collect results
-benchmarks/solo-vs-amux/bench.sh collect solo 1
-benchmarks/solo-vs-amux/bench.sh collect amux 1
+benchmarks/solo-vs-amutix/bench.sh collect solo 1
+benchmarks/solo-vs-amutix/bench.sh collect amutix 1
 
 # 6. Generate report
-benchmarks/solo-vs-amux/bench.sh report
+benchmarks/solo-vs-amutix/bench.sh report
 ```
 
 ## How It Works
 
-The harness creates **isolated git clones** at a fixed base commit. The solo arm gets one workspace. The amux-style arm gets one shared sequential workspace so the architect can leave `SPEC.md`, the developer can implement and leave `HANDOFF.md`, and the reviewer can inspect the actual diff/test output. None of these workspaces mutate the source repo.
+The harness creates **isolated git clones** at a fixed base commit. The solo arm gets one workspace. The amutix-style arm gets one shared sequential workspace so the architect can leave `SPEC.md`, the developer can implement and leave `HANDOFF.md`, and the reviewer can inspect the actual diff/test output. None of these workspaces mutate the source repo.
 
 **Solo arm**: A single agent receives the task description and works independently — discovers the codebase, designs the approach, implements, and tests.
 
@@ -46,7 +46,7 @@ Override via environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BENCH_ROOT` | `/tmp/amux-bench` | Workspace root |
+| `BENCH_ROOT` | `/tmp/amutix-bench` | Workspace root |
 | `SRC_REPO` | repo root | Source repo to clone |
 | `BASE_COMMIT` | `HEAD` | Starting commit for all arms |
 | `PI_BIN` | `pi` | Pi binary path |
@@ -84,14 +84,14 @@ The report must state which method was used. Do not claim efficiency without exa
 - Runs are semi-manual — the harness prepares workspaces and executable Pi scripts, but the operator still runs each arm and records exact provider token usage externally when needed.
 - Generated Pi scripts use isolated session storage, not `--no-session`, so local session logs can be inspected without contaminating normal Pi history.
 - Token measurement depends on provider/session tooling, not only the harness.
-- Tasks are designed for the amux codebase; results may not generalize.
-- The amux arm has coordination overhead; small tasks may not show compression benefit.
+- Tasks are designed for the amutix codebase; results may not generalize.
+- The amutix arm has coordination overhead; small tasks may not show compression benefit.
 - Quality scoring is manual (see `scorecard-template.md`).
 
 ## File Layout
 
 ```
-benchmarks/solo-vs-amux/
+benchmarks/solo-vs-amutix/
   bench.sh                  Harness script
   README.md                 This file
   tasks/                    Task definitions

@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.0.0 (2026-06-27)
+
+### Changed — Product rebrand: amux → amutix
+
+The generic "amux" (agent-multiplexer) name collided head-on with another open-source project (`mixpeek/amux`, which owns `amux.io` and comparison pages). As of 2.0.0, the product is rebranded to **amutix** — our existing GitHub/npm org name, now also the product name, binary name, and npm package name.
+
+- **Product name**: amux → amutix
+- **Binary**: `amux` → `amutix`
+- **npm package**: `@amutix/amux` → `amutix` (unscoped) and `amux-pi` → `@amutix/pi`
+- **Slash command**: `/amux` → `/amutix` (with `/amux` back-compat alias, removed in 3.0)
+- **Tool names**: all `amux_*` tools → `amutix_*` (with `amux_*` aliases, removed in 3.0):
+  - `amutix_task`, `amutix_send`, `amutix_broadcast`, `amutix_discussion`, `amutix_role`, `amutix_reserve`, `amutix_journal`, `amutix_project`, `amutix_wow`, `amutix_artifacts`, `amutix_list`
+- **Message format**: `[amux:...]` → `[amutix:...]`
+- **Data directory**: `~/.amux/` → `~/.amutix/` (with read-fallback to `~/.amux/` for pre-2.0 sessions; no automatic migration needed)
+- **Environment variables**: `AMUX_SESSIONS_DIR` → `AMUTIX_SESSIONS_DIR`, `AMUX_HOME` → `AMUTIX_HOME` (legacy aliases preserved, removed in 3.0)
+
+### Migration guide
+
+Existing sessions work without migration: amutix 2.0 reads `~/.amux/` data automatically if `~/.amutix/` doesn't exist. For a clean move, rename the directory:
+
+```bash
+mv ~/.amux ~/.amutix
+```
+
+Agents and scripts using old `amux_*` tool names and `/amux` commands continue to work via back-compat aliases (deprecated, scheduled for removal in 3.0).
+
 ## Unreleased
 
 No changes yet.

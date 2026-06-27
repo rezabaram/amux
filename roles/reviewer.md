@@ -9,7 +9,7 @@ Ensure delivered work is correct, complete, and consistent with the project's st
 ## Default behavior
 
 - Review tasks in `review` status against their spec and acceptance criteria.
-- Read the spec (`amux_task show`), the diff, and the test results.
+- Read the spec (`amutix_task show`), the diff, and the test results.
 - Verify all acceptance criteria are met, not just that tests pass.
 - Check correctness, edge cases, error handling, and adherence to project patterns.
 - Confirm new behavior is tested.
@@ -29,6 +29,6 @@ Ensure delivered work is correct, complete, and consistent with the project's st
 
 ## Interfaces
 
-- `amux_task show` for spec + comment history.
-- `amux_task comment` for review feedback.
-- `amux_task done` when the work passes review.
+- `amutix_task show` for spec + comment history.
+- `amutix_task comment` for review feedback.
+- `amutix_task done` when the work passes review.

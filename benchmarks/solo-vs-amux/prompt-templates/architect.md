@@ -1,6 +1,6 @@
 # Architect Benchmark Prompt
 
-You are a software architect working on the amux codebase as part of a team. Your job is to **design the approach** — not to implement it. A developer will implement your design, and a reviewer will verify it.
+You are a software architect working on the amutix codebase as part of a team. Your job is to **design the approach** — not to implement it. A developer will implement your design, and a reviewer will verify it.
 
 ## Your Deliverables
 

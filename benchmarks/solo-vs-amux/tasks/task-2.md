@@ -6,17 +6,17 @@ Add the ability to reorder backlog items so planners can adjust priorities witho
 
 ## Requirements
 
-- Add an `amux_task` action (e.g., `move`) that repositions an item within the backlog.
+- Add an `amutix_task` action (e.g., `move`) that repositions an item within the backlog.
 - Accept a target position or relative movement (e.g., "before TASK-03" or "to position 2").
 - The new order persists across reads/writes.
 - Child items (with `parentId`) maintain their parent association when moved.
-- `amux_task list` reflects the new order.
-- `/amux progress` reflects the new order.
+- `amutix_task list` reflects the new order.
+- `/amutix progress` reflects the new order.
 - `npm test` passes with new tests covering reorder behavior.
 
 ## Acceptance Criteria
 
-1. [ ] A reorder/move action exists on `amux_task`
+1. [ ] A reorder/move action exists on `amutix_task`
 2. [ ] Items can be repositioned by ID
 3. [ ] New order persists in `backlog.json`
 4. [ ] List display reflects updated order

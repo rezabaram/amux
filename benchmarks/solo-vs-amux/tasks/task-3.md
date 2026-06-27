@@ -2,11 +2,11 @@
 
 ## Goal
 
-Add workspace-level git information (current branch, dirty file count) to the `/amux progress` and `amux_task summary` output so team leads can see at a glance whether agents have uncommitted work or are on unexpected branches.
+Add workspace-level git information (current branch, dirty file count) to the `/amutix progress` and `amutix_task summary` output so team leads can see at a glance whether agents have uncommitted work or are on unexpected branches.
 
 ## Requirements
 
-- `/amux progress` shows workspace info for online agents: branch name and number of dirty files.
+- `/amutix progress` shows workspace info for online agents: branch name and number of dirty files.
 - Information appears in a concise "Team" or "Agents" section of the progress view.
 - Agents without workspaces show "(no workspace)" gracefully.
 - Offline agents are excluded or marked as offline.

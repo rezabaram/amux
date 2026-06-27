@@ -1,11 +1,11 @@
-# Contributing to amux
+# Contributing to amutix
 
-Thank you for your interest in contributing to amux!
+Thank you for your interest in contributing to amutix!
 
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/amux.git`
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/amutix.git`
 3. Create a branch: `git checkout -b feature/my-feature`
 4. Make your changes
 5. Run tests: `npm test`
@@ -16,7 +16,7 @@ Thank you for your interest in contributing to amux!
 ## Project Structure
 
 ```
-amux/
+amutix/
 ├── core/       Core library (Pi-independent, framework-agnostic)
 ├── pi/         Pi extension (tools, commands, prompt injection)
 ├── cli/        Command-line interface

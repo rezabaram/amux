@@ -1,10 +1,10 @@
 # Worked Example: Pilot Benchmark Lessons
 
-Based on the initial `/tmp/amux-bench` pilot run. This is NOT a rigorous result — it documents what we learned about the harness and methodology.
+Based on the initial `/tmp/amutix-bench` pilot run. This is NOT a rigorous result — it documents what we learned about the harness and methodology.
 
 ## Pilot Setup
 
-- **Task**: Add reservation stale/offline coverage to the amux codebase
+- **Task**: Add reservation stale/offline coverage to the amutix codebase
 - **Model**: deepseek/deepseek-v4-pro (thinking: high)
 - **Base commit**: pre-TASK-35 hardening
 - **Token measurement**: stdout chars ÷ 4 (last-resort proxy — NOT reliable for claims)

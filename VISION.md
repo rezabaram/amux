@@ -1,16 +1,16 @@
-# amux Vision
+# amutix Vision
 
 ## One-line vision
 
-amux turns isolated AI coding agents into an aligned, communicating engineering team that can deliver outcomes no single agent can reliably achieve alone.
+amutix turns isolated AI coding agents into an aligned, communicating engineering team that can deliver outcomes no single agent can reliably achieve alone.
 
 ## Mission
 
-amux exists to make multi-agent software work practical: efficient communication, high alignment, and coordinated execution across specialized agents.
+amutix exists to make multi-agent software work practical: efficient communication, high alignment, and coordinated execution across specialized agents.
 
 A single agent can be fast, but it is bounded by one context window, one line of thought, and one working memory. A coordinated agent team can divide work, review each other, preserve decisions, maintain project state, and compound progress — but only if communication and alignment are cheap enough to avoid chaos.
 
-amux is the coordination layer for that team.
+amutix is the coordination layer for that team.
 
 ## Core belief
 
@@ -18,13 +18,13 @@ The hard problem in multi-agent coding is not sending messages. It is keeping wo
 
 Without coordination, agents create stale instructions, duplicate work, hidden decisions, file conflicts, and divergent plans. With the right coordination layer, agents can behave more like a well-run development team: shared goals, clear ownership, visible progress, durable decisions, and respectful handoffs.
 
-## What amux optimizes for
+## What amutix optimizes for
 
 ### 1. Efficient communication
 
 Agents should exchange the right information at the right time, without stale instructions, inbox noise, or repeated context dumps.
 
-amux favors:
+amutix favors:
 
 - task-scoped comments over scattered direct messages
 - state-derived prompts over queued task instructions
@@ -36,7 +36,7 @@ amux favors:
 
 Agents should know the project goal, current plan, ownership boundaries, dependencies, and latest decisions before they act.
 
-amux favors:
+amutix favors:
 
 - hierarchical backlog items for shared structure
 - parent context for child work
@@ -49,7 +49,7 @@ amux favors:
 
 The point is not to run many agents independently. The point is to make their combined work better than the sum of separate runs.
 
-amux should help agents:
+amutix should help agents:
 
 - split complex work into coherent slices
 - work in parallel without stepping on each other
@@ -82,7 +82,7 @@ amux should help agents:
    Interruptions should be generic, coalesced, and respectful of focus/away states. Agents should pull detail when ready.
 
 8. **Stay local, file-based, and crash-safe.**  
-   amux should not require a server or database to coordinate agents. JSON state, append-only logs, atomic writes, file locks, heartbeat TTLs, and recoverable inboxes make collaboration robust and inspectable.
+   amutix should not require a server or database to coordinate agents. JSON state, append-only logs, atomic writes, file locks, heartbeat TTLs, and recoverable inboxes make collaboration robust and inspectable.
 
 9. **Keep adapters thin.**  
    Core workflows and renderers should be framework-agnostic. Pi, CLI, and future interfaces should share the same behavior.
@@ -92,7 +92,7 @@ amux should help agents:
 
 ## Why state-derived coordination matters
 
-When one agent assigns `TASK-05` to another, amux should not rely on a queued message body as the source of truth. The backlog records `TASK-05` as assigned. When the assignee's next turn starts, prompt context is generated from current state.
+When one agent assigns `TASK-05` to another, amutix should not rely on a queued message body as the source of truth. The backlog records `TASK-05` as assigned. When the assignee's next turn starts, prompt context is generated from current state.
 
 If the task was reassigned, completed, blocked, or expanded before the assignee wakes up, they see the current truth — not an old instruction that merely arrived late.
 
@@ -108,13 +108,13 @@ The strongest multi-agent workflows resemble a disciplined engineering team:
 - a planner keeps dependencies and progress clear
 - a devops agent validates packaging or deployment
 
-amux provides the shared surfaces these roles need: backlog, comments, reservations, journals, artifacts, workspaces, and progress views.
+amutix provides the shared surfaces these roles need: backlog, comments, reservations, journals, artifacts, workspaces, and progress views.
 
 ## Rationale
 
 Multi-agent systems fail when communication becomes more expensive than execution. They produce stale instructions, duplicate work, file conflicts, hidden decisions, and unreviewed divergence.
 
-amux addresses those failure modes by making coordination explicit and lightweight:
+amutix addresses those failure modes by making coordination explicit and lightweight:
 
 - **Shared state** replaces fragile memory.
 - **Task-scoped history** replaces scattered chat.
@@ -128,4 +128,4 @@ The desired outcome is a team of agents that can plan, build, review, and harden
 
 ## North star
 
-A user should be able to give amux a complex software goal, step away, and return to a clearly coordinated project state: what was planned, who did what, what changed, what remains, and why the result is better than a single-agent attempt.
+A user should be able to give amutix a complex software goal, step away, and return to a clearly coordinated project state: what was planned, who did what, what changed, what remains, and why the result is better than a single-agent attempt.

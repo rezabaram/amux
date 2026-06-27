@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# amux benchmark harness — solo vs amux workflow comparison
+# amutix benchmark harness — solo vs amutix workflow comparison
 # See README.md in this directory for documentation.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Configuration (override via environment)
-BENCH_ROOT="${BENCH_ROOT:-/tmp/amux-bench}"
+BENCH_ROOT="${BENCH_ROOT:-/tmp/amutix-bench}"
 SRC_REPO="${SRC_REPO:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 BASE_COMMIT="${BASE_COMMIT:-$(cd "$SRC_REPO" && git rev-parse HEAD)}"
 PI_BIN="${PI_BIN:-pi}"
@@ -20,20 +20,20 @@ PROMPTS_DIR="$SCRIPT_DIR/prompt-templates"
 
 usage() {
   cat <<EOF
-amux benchmark harness — solo vs amux comparison
+amutix benchmark harness — solo vs amutix comparison
 
 Usage: bench.sh <command> [args]
 
 Commands:
   prepare             Create isolated benchmark workspace metadata
   run-solo <n>        Create solo workspace, prompt, and runnable script for task n
-  run-amux <n>        Create amux workspace plus architect/developer/reviewer scripts for task n
-  collect <arm> <n>   Collect results after a run (arm: solo|amux)
+  run-amutix <n>        Create amutix workspace plus architect/developer/reviewer scripts for task n
+  collect <arm> <n>   Collect results after a run (arm: solo|amutix)
   report              Generate markdown report from collected results
   stop                Stop benchmark processes running under BENCH_ROOT
 
 Environment:
-  BENCH_ROOT          Workspace root (default: /tmp/amux-bench)
+  BENCH_ROOT          Workspace root (default: /tmp/amutix-bench)
   SRC_REPO            Source repo path (default: repo root)
   BASE_COMMIT         Starting commit (default: HEAD)
   PI_BIN              Pi binary (default: pi)
@@ -143,7 +143,7 @@ cmd_prepare() {
   echo "Thinking:     ${PI_THINKING:-not set}"
   echo "Timeout:      ${BENCH_TIMEOUT_SECONDS}s"
   echo ""
-  echo "Ready. Next: bench.sh run-solo <n>  or  bench.sh run-amux <n>"
+  echo "Ready. Next: bench.sh run-solo <n>  or  bench.sh run-amutix <n>"
 }
 
 cmd_run_solo() {
@@ -171,15 +171,15 @@ cmd_run_solo() {
   echo "After:  $SCRIPT_DIR/bench.sh collect solo $n"
 }
 
-cmd_run_amux() {
+cmd_run_amutix() {
   local n="$1"
   local task="$TASKS_DIR/task-${n}.md"
   [[ -f "$task" ]] || { echo "Error: $task not found."; exit 1; }
   write_metadata
 
-  local dir="$BENCH_ROOT/amux-task-${n}"
-  echo "=== Setting up amux-style arm for task $n ==="
-  clone_workspace "$dir" "bench-amux-task-${n}"
+  local dir="$BENCH_ROOT/amutix-task-${n}"
+  echo "=== Setting up amutix-style arm for task $n ==="
+  clone_workspace "$dir" "bench-amutix-task-${n}"
 
   for role in architect developer reviewer; do
     local upper
@@ -203,7 +203,7 @@ cmd_run_amux() {
   echo "  2. Run developer; it should implement from SPEC.md and write HANDOFF.md."
   echo "  3. Run reviewer; it should review spec + diff + tests and write REVIEW.md."
   echo ""
-  echo "After:  $SCRIPT_DIR/bench.sh collect amux $n"
+  echo "After:  $SCRIPT_DIR/bench.sh collect amutix $n"
 }
 
 copy_if_present() {
@@ -220,10 +220,10 @@ cmd_collect() {
   local d
   if [[ "$arm" == "solo" ]]; then
     d="$BENCH_ROOT/solo-task-${n}"
-  elif [[ "$arm" == "amux" ]]; then
-    d="$BENCH_ROOT/amux-task-${n}"
+  elif [[ "$arm" == "amutix" ]]; then
+    d="$BENCH_ROOT/amutix-task-${n}"
   else
-    echo "Error: arm must be 'solo' or 'amux'"; exit 1
+    echo "Error: arm must be 'solo' or 'amutix'"; exit 1
   fi
   [[ -d "$d/.git" ]] || { echo "Error: workspace not found: $d"; exit 1; }
 
@@ -364,8 +364,8 @@ cmd_stop() {
 case "${1:-}" in
   prepare)  cmd_prepare ;;
   run-solo) cmd_run_solo "${2:?Task number required}" ;;
-  run-amux) cmd_run_amux "${2:?Task number required}" ;;
-  collect)  cmd_collect "${2:?Arm required (solo|amux)}" "${3:?Task number required}" ;;
+  run-amutix) cmd_run_amutix "${2:?Task number required}" ;;
+  collect)  cmd_collect "${2:?Arm required (solo|amutix)}" "${3:?Task number required}" ;;
   report)   cmd_report ;;
   stop)     cmd_stop ;;
   help|--help|-h) usage ;;

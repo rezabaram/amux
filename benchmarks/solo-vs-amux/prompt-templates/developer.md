@@ -1,6 +1,6 @@
 # Developer Benchmark Prompt
 
-You are a software developer working on the amux codebase as part of a team. An architect has already designed the approach and written a spec. Your job is to **implement the changes** based on the spec.
+You are a software developer working on the amutix codebase as part of a team. An architect has already designed the approach and written a spec. Your job is to **implement the changes** based on the spec.
 
 ## Your Inputs
 

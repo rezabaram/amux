@@ -7,7 +7,7 @@ Copy this file for each benchmark run. Fill in results and scoring.
 | Field | Value |
 |-------|-------|
 | Task | _e.g., Task 1: Add numeric priority_ |
-| Arm | _solo / amux_ |
+| Arm | _solo / amutix_ |
 | Model | _e.g., anthropic/claude-sonnet-4_ |
 | Thinking | _e.g., high_ |
 | Base commit | _hash_ |
@@ -51,9 +51,9 @@ _Scoring: 0=not attempted, 1=major issues, 2=minor issues, 3=solid_
 | Metric | Value | Method |
 |--------|-------|--------|
 | Total tokens | | _exact / estimate / proxy_ |
-| Architect tokens (amux) | | |
-| Developer tokens (amux) | | |
-| Reviewer tokens (amux) | | |
+| Architect tokens (amutix) | | |
+| Developer tokens (amutix) | | |
+| Reviewer tokens (amutix) | | |
 
 **Measurement method**: _Describe how tokens were measured. See analysis-guide.md for caveats._
 
@@ -78,8 +78,8 @@ Check any observed patterns (see analysis-guide.md for descriptions):
 
 | | |
 |---|---|
-| Winner | _solo / amux / inconclusive_ |
-| Quality score | _solo: N/15, amux: N/15_ |
-| Tokens | _solo: N, amux: N_ |
-| Quality per token | _solo: score/tokens, amux: score/tokens_ |
+| Winner | _solo / amutix / inconclusive_ |
+| Quality score | _solo: N/15, amutix: N/15_ |
+| Tokens | _solo: N, amutix: N_ |
+| Quality per token | _solo: score/tokens, amutix: score/tokens_ |
 | Justification | |

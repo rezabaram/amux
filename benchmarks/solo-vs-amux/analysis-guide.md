@@ -1,6 +1,6 @@
 # Benchmark Analysis Guide
 
-How to interpret solo-vs-amux benchmark results honestly.
+How to interpret solo-vs-amutix benchmark results honestly.
 
 ## Primary Metric: Quality per Token
 
@@ -10,7 +10,7 @@ The goal is **verified quality per token**, not raw token counts. A team that us
 quality_per_token = quality_score / total_tokens
 ```
 
-Quality score comes from the scorecard rubric (0-15). Total tokens are the sum across all agents for the amux arm.
+Quality score comes from the scorecard rubric (0-15). Total tokens are the sum across all agents for the amutix arm.
 
 ## Token Measurement Caveats
 
@@ -34,16 +34,16 @@ The solo agent explores the full codebase when only 3-4 files are relevant. Symp
 The architect's spec omits critical context. The developer makes wrong assumptions, asks clarifying questions, or produces incorrect code. The rework tokens often exceed what the developer would have spent reading the codebase directly. Watch for: developer deviating from spec, unexpected file changes not in spec, test failures from incorrect assumptions.
 
 ### Re-derivation
-An agent reconstructs knowledge that already exists in amux state (specs, journal entries, task comments, previous task summaries). Symptoms: agent reasons through a decision that was already recorded, re-reads files that a spec already summarized. This indicates the compression layer isn't being used effectively.
+An agent reconstructs knowledge that already exists in amutix state (specs, journal entries, task comments, previous task summaries). Symptoms: agent reasons through a decision that was already recorded, re-reads files that a spec already summarized. This indicates the compression layer isn't being used effectively.
 
 ### Coordination Overhead
-The amux team spends more tokens on coordination (reading task state, writing comments, updating specs) than they save from narrower context. Most likely on small tasks where the architect's broad read + spec writing costs more than the developer saves. Watch for: architect spec longer than the eventual code change.
+The amutix team spends more tokens on coordination (reading task state, writing comments, updating specs) than they save from narrower context. Most likely on small tasks where the architect's broad read + spec writing costs more than the developer saves. Watch for: architect spec longer than the eventual code change.
 
 ### Blind Self-Review
 The solo agent misses issues that a separate reviewer would catch. Symptoms: tests pass but requirements are partially unmet, edge cases missed, code quality issues. This is the primary value of the reviewer role — catching blind spots the implementer can't see.
 
 ### Task Scoping Failure
-The agent misunderstands the scope of the task. Builds something adjacent but not what was asked for. More likely in solo mode where there's no architect to constrain scope, but can also happen in amux mode if the architect's spec is ambiguous.
+The agent misunderstands the scope of the task. Builds something adjacent but not what was asked for. More likely in solo mode where there's no architect to constrain scope, but can also happen in amutix mode if the architect's spec is ambiguous.
 
 ## Interpreting Results
 
@@ -66,7 +66,7 @@ The agent misunderstands the scope of the task. Builds something adjacent but no
 
 ## What NOT to Claim
 
-- Do not claim amux is "more efficient" from a single task comparison.
+- Do not claim amutix is "more efficient" from a single task comparison.
 - Do not claim token savings from proxy measurements.
 - Do not compare runs with different models or thinking modes.
 - Do not ignore rework costs — include them in total tokens.

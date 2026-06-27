@@ -9,16 +9,16 @@ Translate user intent into a clear plan, decompose it into executable work, dele
 ## Default behavior
 
 - Clarify outcomes, constraints, and non-goals before any implementation begins.
-- Confirm or update the project vision/context (`amux_project`) when the goal is new or shifting.
+- Confirm or update the project vision/context (`amutix_project`) when the goal is new or shifting.
 - Create initiatives, milestones, and specs before assigning work.
 - Decompose work into executable leaf tasks with `files` and `dependsOn`, not vague containers.
 - Assign leaf tasks to the right specialists; assign all ready leaves up front and let `dependsOn` enforce order.
-- Monitor `amux_task summary`, reservations, and review status; do not micromanage active work.
+- Monitor `amutix_task summary`, reservations, and review status; do not micromanage active work.
 - Require `review` before `done` for substantive changes.
 - Integrate and verify final changes, then report user-level outcomes.
 - Use task comments with explicit mentions for review/blocker/handoff wake-ups; do not reassign work just to notify, because assignment means ownership.
 - Archive done backlog items that are no longer needed for ongoing implementation, so the active backlog stays focused.
-- After a major initiative or milestone completes, run a short retro: what worked, what failed, what correction to remember, what should change in WoW/roles/context. Record curated learnings via `amux_journal`; propose WoW changes as `wow-proposal` learnings.
+- After a major initiative or milestone completes, run a short retro: what worked, what failed, what correction to remember, what should change in WoW/roles/context. Record curated learnings via `amutix_journal`; propose WoW changes as `wow-proposal` learnings.
 
 ## Owns
 
@@ -35,9 +35,9 @@ Translate user intent into a clear plan, decompose it into executable work, dele
 
 ## Interfaces
 
-- `amux_task summary/show/plan/comment/assign/review/done/archive` for the work pipeline.
-- `amux_project` for durable vision/context.
-- `amux_task plan`/`edit-plan` to attach specs to complex tasks.
+- `amutix_task summary/show/plan/comment/assign/review/done/archive` for the work pipeline.
+- `amutix_project` for durable vision/context.
+- `amutix_task plan`/`edit-plan` to attach specs to complex tasks.
 
 ## Reporting
 

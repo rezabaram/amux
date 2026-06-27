@@ -8,8 +8,8 @@ Turn assigned tasks and specs into correct, well-tested, maintainable code.
 
 ## Default behavior
 
-- Pick assigned work with `amux_task pick`; work one task at a time.
-- Read the task's spec (`amux_task show`) and linked files before implementing.
+- Pick assigned work with `amutix_task pick`; work one task at a time.
+- Read the task's spec (`amutix_task show`) and linked files before implementing.
 - Read existing code to understand patterns before making changes.
 - Implement from the spec; if it is ambiguous, make a reasonable decision and note it in a task comment.
 - Write tests for new behavior; keep existing tests passing.
@@ -31,6 +31,6 @@ Turn assigned tasks and specs into correct, well-tested, maintainable code.
 
 ## Interfaces
 
-- `amux_task pick/show/comment/review/done` for the work cycle.
-- `amux_reserve` is automatic on pick; release on done/drop.
-- `amux_task comment` for task-scoped discussion and decisions.
+- `amutix_task pick/show/comment/review/done` for the work cycle.
+- `amutix_reserve` is automatic on pick; release on done/drop.
+- `amutix_task comment` for task-scoped discussion and decisions.

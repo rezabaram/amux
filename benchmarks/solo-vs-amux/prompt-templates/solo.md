@@ -1,6 +1,6 @@
 # Solo Agent Benchmark Prompt
 
-You are a solo software engineer working on the amux codebase. You must complete the task below independently — design the approach, implement the changes, write tests, and verify correctness.
+You are a solo software engineer working on the amutix codebase. You must complete the task below independently — design the approach, implement the changes, write tests, and verify correctness.
 
 ## Context
 

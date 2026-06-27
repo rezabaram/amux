@@ -1,6 +1,6 @@
-# amux -- Agent Multiplexer
+# amutix -- Coordination layer for AI agent teams
 
-amux is a local, file-backed coordination layer for AI coding agents.
+amutix is a local, file-backed coordination layer for AI coding agents.
 
 It provides shared project state for agents working in the same repository: who the agents are, what work exists, who owns it, what is blocked, which files are reserved, and what context should be injected into each agent's prompt.
 
@@ -8,7 +8,7 @@ The core is framework-agnostic. This package includes a [Pi](https://github.com/
 
 ## Scope
 
-Use amux when you already have multiple coding agents or sessions and need a lightweight way to coordinate them.
+Use amutix when you already have multiple coding agents or sessions and need a lightweight way to coordinate them.
 
 It is not an LLM runtime, hosted agent platform, workflow DAG engine, or automatic planner.
 
@@ -50,34 +50,34 @@ See [VISION.md](./VISION.md) for the full vision, principles, and rationale.
 
 ```bash
 # Stable (npm)
-pi install npm:@amutix/amux
+pi install npm:amutix
 
 # Latest (git)
-pi install git:github.com/amutix/amux
+pi install git:github.com/amutix/amutix
 ```
 
 ### Standalone (core module)
 
 ```bash
-git clone https://github.com/amutix/amux.git
+git clone https://github.com/amutix/amutix.git
 ```
 
 Import the core module directly in your project:
 
 ```typescript
-import { createAgent, sendMessage, addTask } from "./amux/core/index.ts";
+import { createAgent, sendMessage, addTask } from "./amutix/core/index.ts";
 ```
 
 ### CLI (read-only, phase 1)
 
 ```bash
-amux work [--session <name>]         # Project progress overview
-amux work show <ITEM-ID> [--session <name>]  # Item details + comments
-amux team [--session <name>]         # Agent availability
-amux project [--session <name>]      # Vision/WoW/role overview
-amux list [--session <name>]         # Backlog listing
-amux progress/show/status            # Compatibility aliases
-amux --help                           # Show available commands
+amutix work [--session <name>]         # Project progress overview
+amutix work show <ITEM-ID> [--session <name>]  # Item details + comments
+amutix team [--session <name>]         # Agent availability
+amutix project [--session <name>]      # Vision/WoW/role overview
+amutix list [--session <name>]         # Backlog listing
+amutix progress/show/status            # Compatibility aliases
+amutix --help                           # Show available commands
 ```
 
 Session is auto-detected if only one exists. The CLI uses shared core services and renderers. For full interactive workflows (create, assign, pick), use the Pi extension.
@@ -87,53 +87,53 @@ Session is auto-detected if only one exists. The CLI uses shared core services a
 ```bash
 # Terminal 1: set up the project
 pi
-/amux new project myapp --repo current --vision "Build ..."
-/amux new agent Lead --role architect --workspace current --join
-/amux new agent Developer --role developer --workspace worktree
+/amutix new project myapp --repo current --vision "Build ..."
+/amutix new agent Lead --role architect --workspace current --join
+/amutix new agent Developer --role developer --workspace worktree
 
 # Terminal 2: another agent joins
 cd ~/myapp-agent1 && pi
-/amux join            # → select project → select agent → start working
+/amutix join            # → select project → select agent → start working
 ```
 
-[cprune: omitted prior tool-call argument edit.arguments.edits[0].newText; 1952 chars; hash=efc60b561f2fc8b4; preview="## Commands amux has five command surfaces: | Surface | Purpose | Examples | |---------|---------|----------| | Project | Alignment artifacts: vision, WoW, roles/templates | `/amux project`, `/amux project vision set ...`, `/amux project wow ...` | | Team | Agents, roles, availability"]
+[cprune: omitted prior tool-call argument edit.arguments.edits[0].newText; 1952 chars; hash=efc60b561f2fc8b4; preview="## Commands amutix has five command surfaces: | Surface | Purpose | Examples | |---------|---------|----------| | Project | Alignment artifacts: vision, WoW, roles/templates | `/amutix project`, `/amutix project vision set ...`, `/amutix project wow ...` | | Team | Agents, roles, availability"]
 
 ### Project Vision / Context
 
 ```bash
-/amux project                         # Show current project vision/context
-/amux project vision set <t>          # Replace project vision/context
-/amux project vision append <t>       # Append to project vision/context
-/amux project vision edit             # Open editor to edit CONTEXT.md
-/amux project vision clear            # Clear project vision/context
-/amux project vision path             # Print CONTEXT.md file path
-/amux project wow ...                 # Manage Ways of Working (also available as /amux wow)
+/amutix project                         # Show current project vision/context
+/amutix project vision set <t>          # Replace project vision/context
+/amutix project vision append <t>       # Append to project vision/context
+/amutix project vision edit             # Open editor to edit CONTEXT.md
+/amutix project vision clear            # Clear project vision/context
+/amutix project vision path             # Print CONTEXT.md file path
+/amutix project wow ...                 # Manage Ways of Working (also available as /amutix wow)
 ```
 
-Project vision/context is stored in `artifacts/project/CONTEXT.md` and auto-injected into agent prompts. Prefer `/amux project vision ...` or the `amux_project` tool over direct file edits.
+Project vision/context is stored in `artifacts/project/CONTEXT.md` and auto-injected into agent prompts. Prefer `/amutix project vision ...` or the `amutix_project` tool over direct file edits.
 
 ### Ways of Working
 
 ```bash
-/amux wow                         # Show current team Ways of Working
-/amux wow set <text>              # Replace WOW.md
-/amux wow append <text>           # Append to WOW.md
-/amux wow edit                    # Open editor to edit WOW.md
-/amux wow clear                   # Clear WOW.md
-/amux wow path                    # Print WOW.md file path
+/amutix wow                         # Show current team Ways of Working
+/amutix wow set <text>              # Replace WOW.md
+/amutix wow append <text>           # Append to WOW.md
+/amutix wow edit                    # Open editor to edit WOW.md
+/amutix wow clear                   # Clear WOW.md
+/amutix wow path                    # Print WOW.md file path
 ```
 
-Ways of Working is stored in `artifacts/project/WOW.md` and auto-injected into agent prompts after the built-in common principles. New projects start with a small default WoW covering task comments, review, waiting/reminders, and learnings. Edit it for project-specific collaboration norms. Keep it concise because it appears in every agent's prompt. Agents can also use the `amux_wow` tool.
+Ways of Working is stored in `artifacts/project/WOW.md` and auto-injected into agent prompts after the built-in common principles. New projects start with a small default WoW covering task comments, review, waiting/reminders, and learnings. Edit it for project-specific collaboration norms. Keep it concise because it appears in every agent's prompt. Agents can also use the `amutix_wow` tool.
 
 ### Prompt preview
 
 ```bash
-/amux prompt                      # Section summary for this agent
-/amux prompt roleProfile          # Preview one section
-/amux prompt all                  # Explicitly show the full amux-appended block
+/amutix prompt                      # Section summary for this agent
+/amutix prompt roleProfile          # Preview one section
+/amutix prompt all                  # Explicitly show the full amutix-appended block
 ```
 
-amux **appends** a coordination block to the host agent runtime's base system prompt — it never replaces the base prompt. `/amux prompt` is a debug surface for understanding what each agent actually sees. By default it shows a compact section summary to avoid dumping the whole prompt; inspect a single section by name (for example `teamContext`) or use `/amux prompt all` when you explicitly want the full amux-appended block. The host's base system prompt is **not** shown (amux never sees or owns it). The preview uses the same gathering path that injects the live prompt, so it never drifts from what agents receive.
+amutix **appends** a coordination block to the host agent runtime's base system prompt — it never replaces the base prompt. `/amutix prompt` is a debug surface for understanding what each agent actually sees. By default it shows a compact section summary to avoid dumping the whole prompt; inspect a single section by name (for example `teamContext`) or use `/amutix prompt all` when you explicitly want the full amutix-appended block. The host's base system prompt is **not** shown (amutix never sees or owns it). The preview uses the same gathering path that injects the live prompt, so it never drifts from what agents receive.
 
 ### Task Workflow
 
@@ -141,33 +141,33 @@ Task assignments are **state-derived** — agents discover their tasks from the 
 
 ```bash
 # View compact task details
-/amux work show TASK-01
-/amux show TASK-01        # shortcut
-amux_task({ action: "show", id: "TASK-01" })
+/amutix work show TASK-01
+/amutix show TASK-01        # shortcut
+amutix_task({ action: "show", id: "TASK-01" })
 
 # Add a task-scoped comment (like PR comments)
-amux_task({ action: "comment", id: "TASK-01", content: "Looks good, one suggestion..." })
+amutix_task({ action: "comment", id: "TASK-01", content: "Looks good, one suggestion..." })
 
 # Compact project progress overview
-/amux work
-/amux progress            # shortcut
-amux_task({ action: "summary" })
-amux_task({ action: "archive" })   # Move done items out of the active backlog
+/amutix work
+/amutix progress            # shortcut
+amutix_task({ action: "summary" })
+amutix_task({ action: "archive" })   # Move done items out of the active backlog
 ```
 
-Lifecycle events (assign, pick, review, done, drop, block) are automatically recorded as activity in `task-comments/<ITEM-ID>.jsonl`. Task comments are durable and notify relevant subscribers by default (assignee, creator, previous commenters, and `@AgentName` mentions); pass `notify: false` or `silent: true` for a quiet note. When a lifecycle change needs another agent's attention (ready for review, blocked, unblocked, dependency handoff, help needed), add a task comment mentioning that agent; do not reassign work just to notify. Agent prompts include only compact latest substantive task-discussion previews; full comment history stays pull-based via `amux_task show`. Use `review` when implementation is ready for review/integration; use `done` when work is reviewed, integrated, and verified. Use `archive` to move done items that are no longer needed for ongoing implementation out of the active backlog. Simple workflows can still mark work done directly. Use `amux_send` only for exceptional non-task communication; delivered messages show intent and age so stale context is visible.
+Lifecycle events (assign, pick, review, done, drop, block) are automatically recorded as activity in `task-comments/<ITEM-ID>.jsonl`. Task comments are durable and notify relevant subscribers by default (assignee, creator, previous commenters, and `@AgentName` mentions); pass `notify: false` or `silent: true` for a quiet note. When a lifecycle change needs another agent's attention (ready for review, blocked, unblocked, dependency handoff, help needed), add a task comment mentioning that agent; do not reassign work just to notify. Agent prompts include only compact latest substantive task-discussion previews; full comment history stays pull-based via `amutix_task show`. Use `review` when implementation is ready for review/integration; use `done` when work is reviewed, integrated, and verified. Use `archive` to move done items that are no longer needed for ongoing implementation out of the active backlog. Simple workflows can still mark work done directly. Use `amutix_send` only for exceptional non-task communication; delivered messages show intent and age so stale context is visible.
 
 For direct messages that need an answer, set `responseRequired: true`; `brainstorm` messages default to requiring a response. Pending replies are shown in the sender's prompt until the recipient replies with `inReplyTo`.
 
 ### Team discussions
 
-Use `amux_discussion` for cross-cutting multi-party collaboration such as retros, brainstorms, design jams, and syncs. Keep task-scoped discussion on `amux_task comment`; discussions are for topics whose audience is a group rather than one task thread.
+Use `amutix_discussion` for cross-cutting multi-party collaboration such as retros, brainstorms, design jams, and syncs. Keep task-scoped discussion on `amutix_task comment`; discussions are for topics whose audience is a group rather than one task thread.
 
 ```bash
-amux_discussion({ action: "start", topic: "Retro: v1.2", kind: "retro", audience: "all" })
-amux_discussion({ action: "start", topic: "Storage design", audience: "agents", participants: ["Lead", "Developer2"] })
-amux_discussion({ action: "post", id: "DISC-01", content: "One option is..." })
-amux_discussion({ action: "close", id: "DISC-01", summary: "Outcome: use append-only JSONL." })
+amutix_discussion({ action: "start", topic: "Retro: v1.2", kind: "retro", audience: "all" })
+amutix_discussion({ action: "start", topic: "Storage design", audience: "agents", participants: ["Lead", "Developer2"] })
+amutix_discussion({ action: "post", id: "DISC-01", content: "One option is..." })
+amutix_discussion({ action: "close", id: "DISC-01", summary: "Outcome: use append-only JSONL." })
 ```
 
 Audience controls expected participation and notifications, not access control. `all` resolves all same-session agents at creation time; `agents` resolves the explicit same-session participants. Open discussions appear in prompts as compact metadata only; full discussion text is shown on demand with `show`.
@@ -175,7 +175,7 @@ Audience controls expected participation and notifications, not access control. 
 For token-efficient review handoff, include a compact free-form summary when marking work ready for review:
 
 ```bash
-amux_task({
+amutix_task({
   action: "review",
   id: "TASK-01",
   summary: "Commit abc123 on agent/alice. Diff: extracted auth parser. Tests: npm test. Risk: token refresh edge cases."
@@ -184,17 +184,17 @@ amux_task({
 
 Reviewer flow: read the linked spec, inspect the diff, inspect test output, then add a task comment or mark the item done. This keeps review scoped to spec + diff + tests instead of reloading broad project context.
 
-When shaping larger work, create the high-level item first (`initiative` or `milestone`), add child executable items, review the structure with `/amux progress`, then assign the leaf work. Assign `task`/`bug`/`chore`/`spec` items rather than container items unless you intentionally want broad ownership.
+When shaping larger work, create the high-level item first (`initiative` or `milestone`), add child executable items, review the structure with `/amutix progress`, then assign the leaf work. Assign `task`/`bug`/`chore`/`spec` items rather than container items unless you intentionally want broad ownership.
 
 **Documentation types:**
 
 | Type | Use for | Tool |
 |------|---------|------|
-| Task description | Brief inline context and acceptance criteria | `amux_task add` |
-| Linked spec | Detailed plans, checklists, design notes | `amux_task plan/edit-plan` |
-| Journal | Decisions, learnings, progress shared across agents | `amux_journal add` |
+| Task description | Brief inline context and acceptance criteria | `amutix_task add` |
+| Linked spec | Detailed plans, checklists, design notes | `amutix_task plan/edit-plan` |
+| Journal | Decisions, learnings, progress shared across agents | `amutix_journal add` |
 
-**Recommended workflow:** Create a high-level initiative with child tasks, assign all executable leaves to the intended agent(s) upfront, and let `dependsOn` enforce ordering. The assignee picks one task at a time after completing the current one. Auto-pick (`amux_task pick` without an ID) prefers assigned-to-self items with met dependencies before open todo items.
+**Recommended workflow:** Create a high-level initiative with child tasks, assign all executable leaves to the intended agent(s) upfront, and let `dependsOn` enforce ordering. The assignee picks one task at a time after completing the current one. Auto-pick (`amutix_task pick` without an ID) prefers assigned-to-self items with met dependencies before open todo items.
 
 ### Backlog Model
 
@@ -212,10 +212,10 @@ Existing items without these fields behave as regular tasks. New item IDs use ty
 ### Availability
 
 ```bash
-/amux status set idle        # Ready for new work
-/amux status set working     # Actively working (auto-set on pick)
-/amux status set focus       # Do not interrupt
-/amux status set away        # Unavailable
+/amutix status set idle        # Ready for new work
+/amutix status set working     # Actively working (auto-set on pick)
+/amutix status set focus       # Do not interrupt
+/amutix status set away        # Unavailable
 ```
 
 Availability is auto-updated by task lifecycle: `pick` → working, `done`/`drop` → idle (preserves explicit focus/away). Idle agents receive a concrete assignment notification when new work is assigned; working/focus/away agents are not interrupted.
@@ -224,21 +224,21 @@ Availability is auto-updated by task lifecycle: `pick` → working, `done`/`drop
 
 | Tool | Actions | Purpose |
 |------|---------|---------|
-| `amux_role` | add, list, remove, templates, apply-template, show, path | Manage roles and apply team templates |
-| `amux_list` | -- | List online/offline agents |
-| `amux_send` | -- | Send message to an agent (exceptional, non-task communication; supports response-required tracking) |
-| `amux_discussion` | start, post, show, list, close | Multi-party discussions for retros, brainstorms, design jams |
-| `amux_broadcast` | -- | Broadcast to all agents |
-| `amux_artifacts` | -- | List shared documents |
-| `amux_project` | show, set, append, clear, path | Manage project vision/context |
-| `amux_wow` | show, set, append, clear, path | Manage project/team Ways of Working |
-| `amux_reserve` | claim, release, list | File/directory reservations |
-| `amux_task` | add, list, show, comment, assign, pick, review, done, drop, block, archive, summary | Task backlog with comments, dependencies, batch assign, archive done items |
-| `amux_journal` | add, list | Record decisions and learnings |
+| `amutix_role` | add, list, remove, templates, apply-template, show, path | Manage roles and apply team templates |
+| `amutix_list` | -- | List online/offline agents |
+| `amutix_send` | -- | Send message to an agent (exceptional, non-task communication; supports response-required tracking) |
+| `amutix_discussion` | start, post, show, list, close | Multi-party discussions for retros, brainstorms, design jams |
+| `amutix_broadcast` | -- | Broadcast to all agents |
+| `amutix_artifacts` | -- | List shared documents |
+| `amutix_project` | show, set, append, clear, path | Manage project vision/context |
+| `amutix_wow` | show, set, append, clear, path | Manage project/team Ways of Working |
+| `amutix_reserve` | claim, release, list | File/directory reservations |
+| `amutix_task` | add, list, show, comment, assign, pick, review, done, drop, block, archive, summary | Task backlog with comments, dependencies, batch assign, archive done items |
+| `amutix_journal` | add, list | Record decisions and learnings |
 
 ## Built-in Roles
 
-Five role templates ship with amux, ready to use during agent creation:
+Five role templates ship with amutix, ready to use during agent creation:
 
 | Role | Description |
 |------|-------------|
@@ -252,7 +252,7 @@ Built-in roles are copied to the project on first use and can be customized.
 
 ## Role Profiles & Team Templates
 
-For lead-agent orchestration, amux ships richer **role profiles** (markdown) and **team templates** for quick setup.
+For lead-agent orchestration, amutix ships richer **role profiles** (markdown) and **team templates** for quick setup.
 
 **Bundled role profiles** (`roles/*.md`):
 
@@ -269,36 +269,36 @@ For lead-agent orchestration, amux ships richer **role profiles** (markdown) and
 | `core-team` | lead-architect + developer + reviewer |
 
 ```bash
-amux_role({ action: "templates" })                       # list bundled profiles + teams
-amux_role({ action: "apply-template", template: "core-team" })  # copy profiles + register roles
-amux_role({ action: "show", name: "lead-architect" })    # resolved role text
-amux_role({ action: "path", name: "lead-architect" })    # project-local profile file path
+amutix_role({ action: "templates" })                       # list bundled profiles + teams
+amutix_role({ action: "apply-template", template: "core-team" })  # copy profiles + register roles
+amutix_role({ action: "show", name: "lead-architect" })    # resolved role text
+amutix_role({ action: "path", name: "lead-architect" })    # project-local profile file path
 ```
 
-Applying a team template copies the role markdown into `artifacts/project/roles/` and registers role definitions. It **does not create agents** — create those separately via `/amux new agent`. The copied markdown is the source of truth (`profilePath`); edit it to customize a role. Existing customized profiles are preserved unless `force` is used.
+Applying a team template copies the role markdown into `artifacts/project/roles/` and registers role definitions. It **does not create agents** — create those separately via `/amutix new agent`. The copied markdown is the source of truth (`profilePath`); edit it to customize a role. Existing customized profiles are preserved unless `force` is used.
 
 ## Lead Orchestration Workflow
 
-amux is built for a lead agent (e.g. the `lead-architect` role) to turn high-level user goals into coordinated, reviewed delivery through a team of specialists. The recommended lead loop:
+amutix is built for a lead agent (e.g. the `lead-architect` role) to turn high-level user goals into coordinated, reviewed delivery through a team of specialists. The recommended lead loop:
 
 1. **Clarify the goal** — outcomes, constraints, non-goals.
-2. **Confirm/update project vision** — `amux_project` (durable, prompt-injected context).
+2. **Confirm/update project vision** — `amutix_project` (durable, prompt-injected context).
 3. **Create structure** — an initiative/milestone/spec for the work.
 4. **Decompose** — break into executable leaf tasks with `files` and `dependsOn`.
 5. **Delegate** — assign executable leaves to specialists (not container items); assign ready leaves up front and let `dependsOn` enforce order.
-6. **Monitor** — `amux_task summary` / `/amux progress`, reservations, review status.
+6. **Monitor** — `amutix_task summary` / `/amutix progress`, reservations, review status.
 7. **Require review** — substantive work goes to `review` before `done`.
 8. **Integrate** — verify and merge the final changes.
 9. **Archive** — move done items no longer needed for ongoing implementation out of the active backlog.
 10. **Report** — give the user a clear outcome: what shipped, files/commits, tests, decisions, risks, next steps.
 
-This workflow is guidance, not magic automation — the lead agent orchestrates through the existing primitives (`amux_task`, `amux_project`, reservations, journal). There is no auto-decomposition action; decomposition is the lead's judgment and stays reviewable.
+This workflow is guidance, not magic automation — the lead agent orchestrates through the existing primitives (`amutix_task`, `amutix_project`, reservations, journal). There is no auto-decomposition action; decomposition is the lead's judgment and stays reviewable.
 
 ### Prompt composition
 
-amux **appends** a composed coordination block to the host agent runtime's base system prompt (it never replaces it). The block is assembled in a deliberate, documented order (see `core/prompt-assembly.ts`):
+amutix **appends** a composed coordination block to the host agent runtime's base system prompt (it never replaces it). The block is assembled in a deliberate, documented order (see `core/prompt-assembly.ts`):
 
-1. Common amux operating principles (collaboration contract)
+1. Common amutix operating principles (collaboration contract)
 2. Project vision/context
 3. Role profile (role-specific only)
 4. Agent identity + workspace
@@ -310,16 +310,16 @@ Role profiles supply only the role-specific section; common principles, vision, 
 
 ## Team Learning & Retrospectives
 
-amux teams learn from mistakes, successes, and user corrections through **curated learnings** — selective, durable lessons that evolve how the team works.
+amutix teams learn from mistakes, successes, and user corrections through **curated learnings** — selective, durable lessons that evolve how the team works.
 
 ### Artifact boundaries
 
 | Artifact | Purpose | Changes how |
 |----------|---------|-------------|
-| `CONTEXT.md` | Project vision and strategy | Via `/amux project vision` or `amux_project` |
-| `WOW.md` | Team collaboration norms | Via `/amux wow` or `amux_wow` |
+| `CONTEXT.md` | Project vision and strategy | Via `/amutix project vision` or `amutix_project` |
+| `WOW.md` | Team collaboration norms | Via `/amutix wow` or `amutix_wow` |
 | role profiles | Per-role behavior | Via editing `roles/<name>.md` |
-| `journal.jsonl` | Curated lessons, decisions, proposals | Via `amux_journal add` |
+| `journal.jsonl` | Curated lessons, decisions, proposals | Via `amutix_journal add` |
 
 ### Retrospectives
 
@@ -330,7 +330,7 @@ After completing a major initiative or milestone, the lead runs a **lightweight 
 3. What user correction should we remember?
 4. What should change in WoW, role profiles, or project context?
 
-Outputs are recorded as `amux_journal` learning entries. Norm-changing proposals use the `context: "wow-proposal"` convention — the journal entry is the proposal; WoW only changes by deliberate lead/user edit via `/amux wow`. Nothing auto-mutates.
+Outputs are recorded as `amutix_journal` learning entries. Norm-changing proposals use the `context: "wow-proposal"` convention — the journal entry is the proposal; WoW only changes by deliberate lead/user edit via `/amutix wow`. Nothing auto-mutates.
 
 ## Workspaces
 
@@ -338,19 +338,19 @@ Agents can work in isolated git worktrees:
 
 ```bash
 # Create an agent with a dedicated worktree
-/amux new agent Alice --role developer --workspace worktree
+/amutix new agent Alice --role developer --workspace worktree
 # → creates ~/myapp-alice on branch agent/alice
 # names are sanitized: "My Agent!" → agent/my-agent
 
 # Agent starts in their worktree
 cd ~/myapp-alice && pi
-/amux join
+/amutix join
 
 # Sync from main (fetches origin, rebases on origin/<mainBranch>)
-/amux workspace > sync
+/amutix workspace > sync
 
 # Check status (compares against origin/<mainBranch>)
-/amux workspace > status
+/amutix workspace > status
 ```
 
 Sync runs `git fetch origin` followed by `git rebase origin/<mainBranch>`, where `<mainBranch>` is the current branch of the main repo (defaults to `main`). This avoids rebasing against a stale local branch. Status compares commit counts against the same remote ref and handles missing refs gracefully.
@@ -372,17 +372,17 @@ Sync runs `git fetch origin` followed by `git rebase origin/<mainBranch>`, where
 
 ## Session Files
 
-Default root: `~/.amux/sessions/`. Override with environment variables:
+Default root: `~/.amutix/sessions/`. Override with environment variables:
 
 | Variable | Effect |
 |----------|--------|
-| `AMUX_SESSIONS_DIR` | Use this path as the sessions directory (highest priority) |
-| `AMUX_HOME` | Use `$AMUX_HOME/sessions` as the sessions directory |
+| `AMUTIX_SESSIONS_DIR` | Use this path as the sessions directory (highest priority) |
+| `AMUTIX_HOME` | Use `$AMUTIX_HOME/sessions` as the sessions directory |
 
 Both core modules and the Pi adapter resolve the same root.
 
 ```
-~/.amux/sessions/<project>/
+~/.amutix/sessions/<project>/
 ├── agents.json             Agent registry (UUID-keyed)
 ├── roles.json              Role definitions
 ├── config.json             Project config (main repo path)
@@ -408,7 +408,7 @@ npm test    # Parse-check all .ts files + run E2E flow tests
 
 ### Benchmarks
 
-See [`benchmarks/solo-vs-amux/`](benchmarks/solo-vs-amux/) for the solo-vs-amux token efficiency benchmark harness.
+See [`benchmarks/solo-vs-amutix/`](benchmarks/solo-vs-amutix/) for the solo-vs-amutix token efficiency benchmark harness.
 
 ## Contributing
 
