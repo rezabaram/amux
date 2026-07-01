@@ -153,9 +153,12 @@ export async function updateAgentTopology(
   agentRef: string,
   updates: AgentTopologyUpdate,
 ): Promise<AgentInfo> {
-  await validateAgentTopologyUpdate(session, updates);
+  const clean = Object.fromEntries(
+    Object.entries(updates).filter(([, value]) => value !== undefined),
+  ) as AgentTopologyUpdate;
+  await validateAgentTopologyUpdate(session, clean);
   const agent = await resolveAgentRef(session, agentRef);
-  await updateAgent(session, agent.id, updates);
+  await updateAgent(session, agent.id, clean);
   return resolveAgentRef(session, agent.id);
 }
 
@@ -287,7 +290,7 @@ export function planWorkspace(options: WorkspacePlanOptions): WorkspacePlan {
   if (existingPaths.has(wsPath)) conflicts.push({ kind: "path", value: wsPath, summary: `Workspace path already in use: ${wsPath}` });
   if (existingWorktrees.has(wsPath)) conflicts.push({ kind: "worktree", value: wsPath, summary: `Git worktree already exists at ${wsPath}` });
   if (existingBranches.has(branchName)) conflicts.push({ kind: "branch", value: branchName, summary: `Branch already exists: ${branchName}` });
-  const commands = [`git -C ${JSON.stringify(options.repoPath)} worktree add ${JSON.stringify(wsPath)} -b ${JSON.stringify(branchName)}`];
+  const commands = [`git -C ${JSON.stringify(options.repoPath)} worktree add -b ${JSON.stringify(branchName)} ${JSON.stringify(wsPath)}`];
   return {
     agentName: options.agentName,
     repoPath: options.repoPath,

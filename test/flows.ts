@@ -3405,9 +3405,9 @@ describe("Neutral tool registry (SPEC-18)", () => {
     assert.ok(projectTool.promptGuidelines?.some((g) => g.includes("project vision/context")));
 
     assert.equal(agentTool.name, "amutix_agent");
-    assert.equal(agentTool.label, "Agent Registration");
+    assert.equal(agentTool.label, "Agent Lifecycle");
     assert.deepEqual(agentTool.inputSchema.required, ["action"]);
-    assert.deepEqual(agentTool.inputSchema.properties.action.enum, ["register"]);
+    assert.deepEqual(agentTool.inputSchema.properties.action.enum, ["register", "update", "show", "list", "plan-workspace", "create-workspace", "assign-workspace", "validate-team", "request-user-action"]);
 
     assert.equal(wowTool.name, "amutix_wow");
     assert.equal(wowTool.label, "Ways of Working");
@@ -3595,6 +3595,63 @@ describe("Neutral tool handlers (SPEC-18 pilot)", () => {
       () => agentTool.execute(regCtx, { action: "register", name: "bad name", role: "x" }),
       /invalid characters/i,
     );
+  });
+
+  it("amutix_agent lifecycle actions expose topology and workspace planning", async () => {
+    const lifecycleSession = testSession("agent-lifecycle-tool");
+    const now = new Date().toISOString();
+    const leadId = newAgentId();
+    const devId = newAgentId();
+    await addRole(lifecycleSession, { name: "developer", instructions: "Build" });
+    await writeSessionConfig(lifecycleSession, { mainRepo: "/repo", createdAt: now });
+    await registerAgent(lifecycleSession, {
+      id: leadId, name: "Lead", session: lifecycleSession, role: "architect", roleName: "lead-architect",
+      cwd: "/repo", pid: 1, status: "online", availability: "idle", registeredAt: now, lastHeartbeat: now,
+    });
+    await registerAgent(lifecycleSession, {
+      id: devId, name: "Dev", session: lifecycleSession, role: "developer", roleName: "developer",
+      cwd: "/repo", pid: 2, status: "online", availability: "idle", registeredAt: now, lastHeartbeat: now,
+    });
+    const toolCtx: AmutixToolContext = {
+      session: lifecycleSession,
+      agentId: leadId,
+      agentName: "Lead",
+      roleName: "lead-architect",
+      exec: async (_cmd, args) => {
+        if (args.includes("worktree")) return { code: 0, stdout: "worktree /repo\n" };
+        if (args.includes("for-each-ref")) return { code: 0, stdout: "main\n" };
+        return { code: 0, stdout: "" };
+      },
+    };
+
+    const updated = await agentTool.execute(toolCtx, { action: "update", name: "Dev", model: "test-model", statusMessage: "ready" });
+    assert.match(updated.text, /Updated Dev/);
+    assert.equal((await findById(lifecycleSession, devId))!.model, "test-model");
+
+    const list = await agentTool.execute(toolCtx, { action: "list" });
+    assert.match(list.text, /Team topology/);
+    assert.match(list.text, /Dev/);
+
+    const validate = await agentTool.execute(toolCtx, { action: "validate-team" });
+    assert.match(validate.text, /shared-cwd|Team topology risks/);
+
+    const plan = await agentTool.execute(toolCtx, { action: "plan-workspace", name: "Dev" });
+    assert.match(plan.text, /Workspace plan for Dev/);
+    assert.equal((plan.details as { plan: { branchName: string } }).plan.branchName, "agent/dev");
+
+    const created = await agentTool.execute(toolCtx, { action: "create-workspace", name: "Dev", repoPath: "/other" });
+    assert.match(created.text, /Created workspace for Dev/);
+
+    const assigned = await agentTool.execute(toolCtx, { action: "assign-workspace", name: "Dev", workspace: "/repo-dev" });
+    assert.match(assigned.text, /live process must restart|Notified affected agent/);
+    const dev = (await findById(lifecycleSession, devId))!;
+    assert.equal(dev.workspace, "/repo-dev");
+    assert.equal(dev.cwd, "/repo");
+    assert.ok(getRecoverableMessages(lifecycleSession, devId).some(({ msg }) => msg.notificationType === "workspace-assignment"));
+
+    const request = await agentTool.execute(toolCtx, { action: "request-user-action", name: "Dev", workspace: "/repo-dev" });
+    assert.match(request.text, /open a new terminal/);
+    cleanupSession(lifecycleSession);
   });
 
   it("amutix_wow neutral handler preserves show/set/append/path/clear behavior", async () => {
