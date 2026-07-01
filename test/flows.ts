@@ -1929,6 +1929,70 @@ describe("Self-waking attention digest", () => {
       now: new Date("2026-01-01T00:05:00.000Z").getTime(),
     }), true);
   });
+
+  it("follows through for idle ready-assigned work until picked or focus/away", async () => {
+    const followSession = testSession("ready-followthrough");
+    const agentId = newAgentId();
+    const timestamp = new Date("2026-01-01T00:00:00.000Z").toISOString();
+    await registerAgent(followSession, {
+      id: agentId, name: "Dev", session: followSession, role: "developer", roleName: "developer",
+      cwd: "/tmp", pid: 1, status: "online", availability: "idle",
+      registeredAt: timestamp, lastHeartbeat: timestamp,
+    });
+    const task = await addTask(followSession, {
+      title: "Ready assigned work", status: "assigned", assignee: "Dev", assigneeId: agentId,
+      createdBy: "Lead", createdAt: timestamp, updatedAt: timestamp,
+    });
+
+    const digest = await computeAttentionDigest(followSession, agentId, { attentionPending: false });
+    assert.ok(digest.some((entry) => entry.kind === "assigned" && entry.pointer === task.id && entry.summary.includes("dependencies met")));
+    const signature = attentionSignature(digest);
+    const deliveredAt = timestamp;
+    const lastTurnEndedAt = new Date("2026-01-01T00:00:30.000Z").toISOString();
+
+    assert.equal(shouldDeliverAttention({
+      digest,
+      signature,
+      deliveredAt,
+      deliveredSig: signature,
+      lastTurnEndedAt,
+      availability: "idle",
+      now: new Date("2026-01-01T00:01:00.000Z").getTime(),
+    }), false);
+    assert.equal(shouldDeliverAttention({
+      digest,
+      signature,
+      deliveredAt,
+      deliveredSig: signature,
+      lastTurnEndedAt,
+      availability: "idle",
+      now: new Date("2026-01-01T00:03:00.000Z").getTime(),
+    }), true);
+    assert.equal(shouldDeliverAttention({
+      digest,
+      signature,
+      deliveredAt,
+      deliveredSig: signature,
+      lastTurnEndedAt,
+      availability: "focus",
+      now: new Date("2026-01-01T00:03:00.000Z").getTime(),
+    }), false);
+
+    await servicePickTask(followSession, task.id, agentId, "Dev");
+    const pickedDigest = await computeAttentionDigest(followSession, agentId, { attentionPending: false });
+    assert.ok(pickedDigest.some((entry) => entry.kind === "active" && entry.pointer === task.id));
+    assert.equal(shouldDeliverAttention({
+      digest: pickedDigest,
+      signature: attentionSignature(pickedDigest),
+      deliveredAt,
+      deliveredSig: signature,
+      lastTurnEndedAt,
+      availability: "working",
+      hasActiveWork: true,
+      now: new Date("2026-01-01T00:04:00.000Z").getTime(),
+    }), false);
+    cleanupSession(followSession);
+  });
 });
 
 describe("Agent availability and attention signals", () => {

@@ -119,10 +119,19 @@ export function shouldDeliverAttention(args: {
   deliveredAt?: string; // agent.attentionDeliveredAt
   deliveredSig?: string; // agent.attentionDigestSig
   lastTurnEndedAt?: string; // agent.lastTurnEndedAt
+  availability?: AgentInfo["availability"];
+  hasActiveWork?: boolean;
   now?: number; // injectable for tests
 }): boolean {
-  const { digest, signature, deliveredAt, deliveredSig, lastTurnEndedAt, now = Date.now() } = args;
+  const { digest, signature, deliveredAt, deliveredSig, lastTurnEndedAt, availability, hasActiveWork = false, now = Date.now() } = args;
   if (digest.length === 0) return false;
+
+  // Respect explicit focus/away and do not nag agents already working an active
+  // task. A stale `working` state with no active work can still be woken below.
+  if (availability === "focus" || availability === "away") return false;
+  if (availability === "working" && hasActiveWork) return false;
+
+  const hasReadyAssigned = digest.some((e) => e.signatureKey?.includes(":ready") || (e.kind === "assigned" && /dependencies met/.test(e.summary)));
 
   // Fresh: never delivered.
   if (!deliveredAt || !deliveredSig) return true;
@@ -130,13 +139,20 @@ export function shouldDeliverAttention(args: {
   // Changed since last delivery.
   if (signature !== deliveredSig) return true;
 
+  const sinceDeliver = now - new Date(deliveredAt).getTime();
+
   // Unchanged — did the agent get a chance to act since delivery?
   const actedSinceDelivery =
     !!lastTurnEndedAt && new Date(lastTurnEndedAt).getTime() > new Date(deliveredAt).getTime();
-  if (actedSinceDelivery) return false; // had its chance and deferred → suppress nag
+  if (actedSinceDelivery) {
+    // Ready assigned work needs follow-through: if the assignee stayed idle and
+    // did not pick/drop/block, re-surface the same pointer on a throttle until
+    // the authoritative task state changes. Other unchanged attention remains
+    // suppressed after the agent had a turn.
+    return hasReadyAssigned && sinceDeliver >= ATTENTION_REDELIVER_MS;
+  }
 
   // Not yet acted on (interrupted/missed) → bounded re-wake.
-  const sinceDeliver = now - new Date(deliveredAt).getTime();
   return sinceDeliver >= ATTENTION_REDELIVER_MS;
 }
 

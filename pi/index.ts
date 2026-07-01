@@ -168,6 +168,8 @@ export default function (pi: ExtensionAPI) {
       deliveredAt: self.attentionDeliveredAt,
       deliveredSig: self.attentionDigestSig,
       lastTurnEndedAt: self.lastTurnEndedAt,
+      availability: self.availability,
+      hasActiveWork: digest.some((entry) => entry.kind === "active"),
     })) return;
 
     await updateAgent(mySession, myId, {
